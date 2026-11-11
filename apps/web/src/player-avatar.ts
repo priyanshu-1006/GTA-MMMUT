@@ -25,7 +25,7 @@ const clips = {
   idle: "Idle_Loop", walk: "Walk_Loop", jog: "Jog_Fwd_Loop", sprint: "Sprint_Loop",
   crouch: "Crouch_Idle_Loop", sneak: "Crouch_Fwd_Loop", takeoff: "Jump_Start",
   air: "Jump_Loop", land: "Jump_Land", ride: "Driving_Loop",
-  sit: "Sitting_Idle_Loop", talk: "Idle_Talking_Loop",
+  sit: "Sitting_Idle_Loop", talk: "Idle_Talking_Loop", door: "Interact",
 } as const;
 export type PlayerAction = keyof typeof clips;
 
@@ -132,12 +132,27 @@ export function createPlayerAvatar(scene: Scene, parent: TransformNode, canvas: 
     if (group !== current) {
       current?.stop();
       current = group;
-      group.start(action !== "takeoff" && action !== "land", rate);
+      group.start(action !== "takeoff" && action !== "land" && action !== "door", rate);
       canvas.dataset.playerAnimation = action;
     }
     group.speedRatio = rate;
   }
 
+  function poseDoor(seconds: number) {
+    const group = animation.get("door");
+    if (!group) return;
+    if (group !== current) {
+      current?.stop();
+      current = group;
+      group.enableBlending = false;
+      group.start(false);
+      group.pause();
+      canvas.dataset.playerAnimation = "door";
+    }
+    const fps = group.targetedAnimations[0].animation.framePerSecond;
+    group.goToFrame(Math.min(group.to, group.from + seconds * fps));
+  }
+
   setAppearance(appearance);
-  return { visual, animate, setAppearance, prepare: () => loading ??= load() };
+  return { visual, animate, poseDoor, setAppearance, prepare: () => loading ??= load() };
 }

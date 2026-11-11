@@ -297,7 +297,7 @@ test("applies both skin packs and changes player camera", async ({ page }, testI
 
   await page.getByRole("button", { name: "Walk campus", exact: true }).press("Enter");
   await expect(canvas).toHaveAttribute("data-player-model", "ready", { timeout: 30_000 });
-  await expect(canvas).toHaveAttribute("data-player-rig", "12", { timeout: 30_000 });
+  await expect(canvas).toHaveAttribute("data-player-rig", "13", { timeout: 30_000 });
   const camera = page.getByRole("combobox", { name: "Player camera" });
   await camera.selectOption("first");
   await expect(canvas).toHaveAttribute("data-player-camera", "first");
@@ -396,6 +396,54 @@ test("loads the Alto 800 and Scorpio in TNP parking", async ({ page }, testInfo)
   }));
   await page.screenshot({ path: testInfo.outputPath("tnp-indian-cars.png") });
   expect(modelErrors).toEqual([]);
+});
+
+test("opens the marked entrance before crossing into each new interior", async ({ page }, testInfo) => {
+  type EntryHistory = Window & { entryHistory: string[] };
+  test.setTimeout(210_000);
+  await page.setViewportSize({ width: 960, height: 650 });
+  await page.addInitScript(() => {
+    if (location.protocol === "http:") localStorage.setItem("gta-mmmut.settings.v1", JSON.stringify({ renderQuality: "low" }));
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("3D preview ready", { timeout: 35_000 });
+  await page.getByRole("button", { name: "Building view", exact: true }).click();
+  const building = page.getByRole("combobox", { name: "Building to inspect" });
+  const outdoor = page.getByLabel("3D campus entrance preview", { exact: true });
+  await outdoor.evaluate((canvas) => {
+    const history = (window as EntryHistory).entryHistory = [];
+    new MutationObserver(() => {
+      const { buildingEntry, buildingEntryStage, playerAnimation } = canvas.dataset;
+      if (!buildingEntry || !buildingEntryStage) return;
+      const motion = `${buildingEntry}/${buildingEntryStage}/${playerAnimation}`;
+      if (history.at(-1) !== motion) history.push(motion);
+    }).observe(canvas, { attributes: true, attributeFilter: ["data-building-entry-stage"] });
+  });
+  for (const { id, view, name } of [
+    { id: "library", view: "library", name: "Central Library" },
+    { id: "hall", view: "hall", name: "Multipurpose Hall" },
+    { id: "nalanda", view: "nalanda", name: "Nalanda" },
+    { id: "pushpagiri", view: "pushpagiri", name: "Pushpagiri" },
+    { id: "takshashila", view: "takshashila-entry", name: "Takshashila" },
+  ]) {
+    await test.step(name, async () => {
+      await building.selectOption(view);
+      await page.getByRole("button", { name: `Enter ${name}`, exact: true }).click();
+      const indoor = page.getByLabel(`3D ${name} interior`, { exact: true });
+      await expect(indoor).toHaveAttribute("data-interior-id", id, { timeout: 35_000 });
+      await expect(indoor).toHaveAttribute("data-interior-location", /\S/);
+      const history = await page.evaluate(() => (window as EntryHistory).entryHistory);
+      const opening = history.indexOf(`${id}/opening/door`);
+      expect(opening).toBeGreaterThanOrEqual(0);
+      expect(history.indexOf(`${id}/crossing/walk`)).toBeGreaterThan(opening);
+      await page.screenshot({ path: testInfo.outputPath(`${id}-arrival.png`) });
+      await page.getByRole("button", { name: /^Exit to campus\b/ }).click({ timeout: 10_000 });
+      await expect(outdoor).toHaveAttribute("data-camera-view", view);
+    });
+  }
+  expect(errors).toEqual([]);
 });
 
 test("enters CSE, visits both floors and wings, and returns outdoors", async ({ page }, testInfo) => {

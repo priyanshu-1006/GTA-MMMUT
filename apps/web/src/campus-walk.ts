@@ -7,6 +7,7 @@ import { worldToAnnotation, type WorldGroundPoint } from "@gta-mmmut/world-data"
 import type { createCampusVehicles, VehicleState } from "./campus-vehicles";
 import { createPlayerAvatar, type PlayerAction } from "./player-avatar";
 import { playerCameras, type PlayerCamera, type PlayerStatus } from "./player-controls";
+import type { BuildingDoorway, PortalTarget } from "./building-interiors";
 
 const groundHeight = 0.025;
 const movementKeys = new Set([
@@ -17,11 +18,31 @@ const cameraModes = Object.keys(playerCameras) as PlayerCamera[];
 
 interface WalkOptions {
   readonly spawn?: readonly [x: number, y: number, z: number];
+  readonly spawnYaw?: number;
   readonly indoor?: boolean;
   readonly portal?: {
-    contains(position: WorldGroundPoint, height: number): boolean;
-    interact(): void;
+    at(position: WorldGroundPoint, height: number): PortalTarget | null;
+    interact(target: PortalTarget): void;
   };
+}
+
+interface DoorEntry {
+  readonly doorway: BuildingDoorway;
+  readonly setOpen: (progress: number) => void;
+  readonly resolve: (completed: boolean) => void;
+  readonly savedPosition: Vector3;
+  readonly savedHeading: number;
+  readonly savedAzimuth: number;
+  readonly from: Vector3;
+  readonly staging: Vector3;
+  readonly approachDuration: number;
+  time: number;
+  completed: boolean;
+}
+
+function ease(value: number) {
+  const t = Math.max(0, Math.min(1, value));
+  return t * t * (3 - 2 * t);
 }
 
 function angleDifference(from: number, to: number) {
@@ -45,10 +66,12 @@ export function createCampusWalk(
   player.ellipsoidOffset.y = 0.83;
   player.isPickable = false;
   const avatar = createPlayerAvatar(scene, player, canvas);
-  avatar.visual.rotation.y = Math.PI;
+  const spawnYaw = walkOptions.spawnYaw ?? Math.PI;
+  avatar.visual.rotation.y = spawnYaw;
   player.setEnabled(false);
 
-  const camera = new ArcRotateCamera("walk-follow", Math.PI / 2, 1.28, 5.2, spawn.clone(), scene);
+  const spawnAzimuth = Math.atan2(-Math.cos(spawnYaw), -Math.sin(spawnYaw));
+  const camera = new ArcRotateCamera("walk-follow", spawnAzimuth, 1.28, 5.2, spawn.clone(), scene);
   camera.panningSensibility = 0;
   camera.wheelDeltaPercentage = 0.08;
   camera.checkCollisions = true;
@@ -76,6 +99,7 @@ export function createCampusWalk(
   let reducedMotion = false;
   let nearby: VehicleState | null = null;
   let previousStatus = "";
+  let entry: DoorEntry | null = null;
   const keys = new Set<string>();
   const velocity = new Vector3();
   const displacement = new Vector3();
@@ -125,7 +149,7 @@ export function createCampusWalk(
     const eye = vehicle ? 1.12 : mode === "first" ? (crouching ? 1.16 : 1.61) : crouching ? 0.97 : 1.27;
     camera.target.set(x + Math.sin(camera.alpha) * shoulder, y + eye, z - Math.cos(camera.alpha) * shoulder);
     const status: PlayerStatus = { camera: mode, vehicle: vehicle?.label ?? null, vehicleKind: vehicle?.kind ?? null, nearby: nearby?.label ?? null,
-      portalNearby: !vehicle && (walkOptions.portal?.contains([x, z], y) ?? false),
+      portalNearby: vehicle ? null : walkOptions.portal?.at([x, z], y) ?? null,
       speed: vehicle ? Math.round(Math.abs(vehicle.speed) * 3.6) : 0 };
     const key = `${status.camera}/${status.vehicle}/${status.vehicleKind}/${status.nearby}/${status.portalNearby}/${status.speed}`;
     if (key !== previousStatus) {
@@ -135,7 +159,7 @@ export function createCampusWalk(
   }
 
   function interact() {
-    if (!active || paused) return;
+    if (!active || paused || entry) return;
     const occupied = vehicles?.active();
     if (occupied) {
       const exit = vehicles?.exit();
@@ -146,9 +170,10 @@ export function createCampusWalk(
       canvas.removeAttribute("data-player-vehicle");
     } else {
       const position: WorldGroundPoint = [player.position.x, player.position.z];
-      if (walkOptions.portal?.contains(position, player.position.y)) {
+      const portal = walkOptions.portal?.at(position, player.position.y);
+      if (portal) {
         clearInput();
-        walkOptions.portal.interact();
+        walkOptions.portal?.interact(portal);
         return;
       }
       nearby = vehicles?.nearby(position) ?? null;
@@ -169,7 +194,7 @@ export function createCampusWalk(
   }
 
   canvas.addEventListener("keydown", (event) => {
-    if (!active || paused) return;
+    if (!active || paused || entry) return;
     const { code } = event;
     if (!movementKeys.has(code) && !["KeyC", "KeyE", "KeyV", "KeyX", "KeyR"].includes(code)) return;
     event.preventDefault();
@@ -195,7 +220,8 @@ export function createCampusWalk(
       setCrouching(false);
       verticalSpeed = 0;
       grounded = true;
-      camera.alpha = Math.PI / 2;
+      camera.alpha = spawnAzimuth;
+      avatar.visual.rotation.y = spawnYaw;
     }
     if (code === "Space" && !occupied && grounded && !crouching) {
       verticalSpeed = 4.7;
@@ -263,9 +289,100 @@ export function createCampusWalk(
     nearby = vehicles?.nearby([player.position.x, player.position.z]) ?? null;
   }
 
+  function doorwayPosition(doorway: BuildingDoorway, sideways: number, ahead: number) {
+    const { point: [x, z], outward: [nx, nz] } = doorway;
+    const px = x + nx * ahead + nz * sideways;
+    const pz = z + nz * ahead - nx * sideways;
+    return new Vector3(px, floorAt(px, pz, player.position.y), pz);
+  }
+
+  async function playEntry(doorway: BuildingDoorway, setOpen: (progress: number) => void, fromPreview: boolean) {
+    await avatar.prepare();
+    if (scene.isDisposed || entry || !active || vehicles?.active()) return false;
+    clearInput();
+    setCrouching(false);
+    verticalSpeed = 0;
+    grounded = true;
+    const [nx, nz] = doorway.outward;
+    const staging = doorwayPosition(doorway, 0, 0.66);
+    const from = fromPreview ? doorwayPosition(doorway, 0, 2.15) : player.position.clone();
+    const savedPosition = player.position.clone();
+    const savedHeading = avatar.visual.rotation.y;
+    const savedAzimuth = camera.alpha;
+    camera.alpha = Math.atan2(nz, nx) + 0.45;
+    camera.lowerRadiusLimit = 1.4;
+    camera.upperRadiusLimit = 7;
+    camera.lowerBetaLimit = 0.6;
+    camera.upperBetaLimit = 1.55;
+    camera.minZ = 0.09;
+    camera.radius = 3.5;
+    camera.beta = 1.36;
+    camera.checkCollisions = false;
+    camera.detachControl();
+    avatar.visual.setEnabled(true);
+    avatar.visual.rotation.y = Math.atan2(-nx, -nz);
+    player.position.copyFrom(from);
+    canvas.dataset.buildingEntry = doorway.id;
+    return new Promise<boolean>((resolve) => {
+      entry = { doorway, setOpen, resolve, savedPosition, savedHeading, savedAzimuth, from, staging,
+        approachDuration: Math.max(0.25, Math.min(1.5, Vector3.Distance(from, staging) / 2.25)),
+        time: 0, completed: false };
+    });
+  }
+
+  function finishEntry() {
+    if (!entry) return;
+    const finished = entry;
+    entry = null;
+    finished.setOpen(0);
+    player.position.copyFrom(finished.savedPosition);
+    avatar.visual.rotation.y = finished.savedHeading;
+    avatar.animate("idle");
+    camera.alpha = finished.savedAzimuth;
+    camera.checkCollisions = true;
+    configureCamera();
+    if (active && !scene.isDisposed) camera.attachControl(false);
+    delete canvas.dataset.buildingEntry;
+    delete canvas.dataset.buildingEntryStage;
+    if (!finished.completed) finished.resolve(false);
+  }
+
+  function presentEntry(sequence: DoorEntry, elapsed: number) {
+    const { doorway, from, staging, approachDuration } = sequence;
+    if (!sequence.completed) sequence.time += elapsed;
+    const atDoor = sequence.time - approachDuration;
+    if (atDoor < 0) {
+      canvas.dataset.buildingEntryStage = "approaching";
+      avatar.animate("walk");
+      Vector3.LerpToRef(from, staging, ease(sequence.time / approachDuration), player.position);
+    } else if (atDoor < 1.52) {
+      canvas.dataset.buildingEntryStage = "opening";
+      avatar.poseDoor(atDoor);
+      sequence.setOpen(ease((atDoor - 0.55) / 0.83));
+    } else {
+      canvas.dataset.buildingEntryStage = "crossing";
+      avatar.animate("walk");
+      const pace = atDoor - 1.52;
+      const lane = -Math.min(0.72, doorway.width * 0.25);
+      const sideways = lane * ease(pace / 0.46);
+      const ahead = 0.66 - 1.18 * ease((pace - 0.16) / 0.84);
+      player.position.copyFrom(doorwayPosition(doorway, sideways, ahead));
+      if (pace >= 1.04 && !sequence.completed) {
+        sequence.completed = true;
+        sequence.resolve(true);
+      }
+    }
+    publish(null);
+    camera.target.set(player.position.x, player.position.y + 1.13, player.position.z);
+  }
+
   scene.onBeforeRenderObservable.add(() => {
     if (!active) return;
     const elapsed = Math.min(scene.getEngine().getDeltaTime() / 1000, 0.12);
+    if (entry) {
+      presentEntry(entry, elapsed);
+      return;
+    }
     let occupied = vehicles?.active() ?? null;
     if (paused) {
       avatar.animate(occupied ? "ride" : "idle");
@@ -301,13 +418,14 @@ export function createCampusWalk(
   }
 
   scene.onDisposeObservable.addOnce(() => {
+    finishEntry();
     stopInput();
     listeners.abort();
   });
 
   configureCamera();
   return {
-    camera, setCamera, interact,
+    camera, setCamera, interact, playEntry, finishEntry,
     setAppearance: avatar.setAppearance,
     setReducedMotion(value: boolean) {
       reducedMotion = value;
@@ -325,6 +443,7 @@ export function createCampusWalk(
         canvas.dataset.cameraView = "walk";
         publish(vehicles?.active() ?? null);
       } else {
+        finishEntry();
         camera.detachControl();
         stopInput();
       }

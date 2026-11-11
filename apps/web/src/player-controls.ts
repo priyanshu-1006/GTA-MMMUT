@@ -1,4 +1,5 @@
 import type { VehicleState } from "./campus-vehicles";
+import type { PortalTarget } from "./building-interiors";
 
 export const playerCameras = {
   follow: "Third person",
@@ -14,6 +15,6 @@ export interface PlayerStatus {
   vehicle: string | null;
   vehicleKind: VehicleState["kind"] | null;
   nearby: string | null;
-  portalNearby: boolean;
+  portalNearby: PortalTarget | null;
   speed: number;
 }

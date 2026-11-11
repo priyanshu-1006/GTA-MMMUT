@@ -86,6 +86,8 @@ export function createAdminBuildings(scene: Scene, shadows: ShadowGenerator) {
 }
 
 export function createCampusBuildings(scene: Scene, shadows: ShadowGenerator) {
-  const customExteriors = new Set(["B16", "B17", "B21", "B22", "B23", "B24", "B28", "B29", "B47", "B48", "B70", "B73", "B74", "B75"]);
+  const customExteriors = new Set([
+    "B16", "B17", "B21", "B22", "B23", "B24", "B28", "B29", "B32", "B45", "B46", "B47", "B48", "B70", "B73", "B74", "B75",
+  ]);
   createBuildings(scene, shadows, campusBuildings.filter(({ id }) => !customExteriors.has(id)));
 }

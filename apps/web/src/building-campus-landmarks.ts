@@ -14,6 +14,7 @@ import { annotationToWorld } from "@gta-mmmut/world-data";
 import { itCampusSplitRow } from "@gta-mmmut/world-data/campus-access";
 import { campusBuildings } from "@gta-mmmut/world-data/campus-buildings";
 import earcut from "earcut";
+import { academicFrontages, lectureEntranceWidth } from "./academic-frontages";
 
 type Point = readonly [x: number, z: number];
 type Rect = readonly [west: number, north: number, east: number, south: number];
@@ -295,14 +296,23 @@ export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): v
   const hallX = (courtWest + courtEast) / 2;
   const hallHeight = hall.height;
   const portalHalfWidth = 2.75;
+  const [northEntryX] = academicFrontages.takshashila.door;
+  const northLeft = northEntryX - lectureEntranceWidth / 2;
+  const northRight = northEntryX + lectureEntranceWidth / 2;
   const northWing = clip(hallOutline, [hallWest, hallNorth, hallEast, courtNorth]);
   const westWing = clip(hallOutline, [hallWest, courtNorth, courtWest, courtSouth]);
   const eastWing = clip(hallOutline, [courtEast, courtNorth, hallEast, courtSouth]);
   const southWing = clip(hallOutline, [hallWest, courtSouth, hallEast, hallSouth]);
-  for (const [name, wing] of [["north", northWing], ["west", westWing], ["east", eastWing]] as const) {
+  for (const [name, wing] of [["west", westWing], ["east", eastWing]] as const) {
     volume(`B47-${name}-wing`, wing, 0, hallHeight, cream);
     volume(`B47-${name}-roof`, wing, hallHeight, hallHeight + 0.16, blueRoof, false);
   }
+  volume("B47-north-wing-west", clip(northWing, [hallWest, hallNorth, northLeft, courtNorth]), 0, hallHeight, cream);
+  volume("B47-north-wing-east", clip(northWing, [northRight, hallNorth, hallEast, courtNorth]), 0, hallHeight, cream);
+  volume("B47-north-wing-portal", clip(northWing, [northLeft, hallNorth, northRight, courtNorth]),
+    3.02, hallHeight, cream);
+  volume("B47-north-roof", northWing, hallHeight, hallHeight + 0.16, blueRoof, false);
+  rectangle(paving, [northLeft, hallNorth, northRight, courtNorth + 1.35], 0, 0.043);
 
   // Illustrative walk-through in the otherwise continuous southern wing.
   volume("B47-south-wing-west", clip(southWing, [hallWest, courtSouth, hallX - portalHalfWidth, hallSouth]),
@@ -318,7 +328,6 @@ export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): v
     box(lectureBand, x, 1.65, hallSouth + 0.066, 0.28, 3.3, 0.19);
   }
   box(lectureBand, hallX, 3.35, hallSouth + 0.072, portalHalfWidth * 2 + 0.32, 0.37, 0.21);
-  sign("B47-hall-sign", "TAKSHASHILA LECTURE HALL COMPLEX", hallX, 3.71, hallSouth + 0.194, 9.75, 0.61);
   for (const y of [1.82, 5.26]) {
     for (let bay = 0; bay < 9; bay++) {
       const x = courtWest + (courtEast - courtWest) * (bay + 0.5) / 9;

@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CLIPS = {
     "Idle_Loop", "Walk_Loop", "Jog_Fwd_Loop", "Sprint_Loop",
     "Crouch_Fwd_Loop", "Crouch_Idle_Loop", "Jump_Start", "Jump_Loop",
-    "Jump_Land", "Driving_Loop", "Sitting_Idle_Loop", "Idle_Talking_Loop",
+    "Jump_Land", "Driving_Loop", "Sitting_Idle_Loop", "Idle_Talking_Loop", "Interact",
 }
 
 

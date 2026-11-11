@@ -21,8 +21,14 @@ Students walk along the entrance sidewalks and covered path, gather near four be
 
 **Building view** offers close views of Atal Bhawan, Administration, Training and Placement, CSE, Multipurpose Hall, Central Library, Mechanical Engineering, Civil Engineering Block I, and Information Technology. **Main gate** lets you inspect both gates, Deoria Road, the Administration forecourt, Atal Bhawan garden, the right-side entrance garden, and the Training and Placement parking lot. **Covered walkway** opens a view under the canopy near Administration. The gold lines in **Map overlay** show the continuous route linking Administration, Pushpagiri, Civil Engineering, CSE, Electrical Engineering and Physics / Basic Sciences. The modeled corridor is approximately 3 metres clear between posts at the provisional map scale.
 
-Choose **Building view → B22 CSE Department → Enter CSE**, or approach the New CSE porch on foot and press **E**. The interior has separate ground and first floors, furnished rooms with plaques, and a directory for each floor. The corridor connects both wings, and the stairs on the left in New CSE connect the floors. Use **Exit to campus** from the sidebar or press **E** at the ground-floor lobby.
-The latest views include the connected CSE complex, Civil Block II, the open stage, Mechanical’s south entry, the I.T. Resource Center, the Cafeteria, and Takshashila’s courtyard. **Main gate** also offers an entrance fountain view. The Civil covered path ends in the passage between Old CSE and IT. The plan shows the Atal Bhawan perimeter drive, the Library road from TNP parking, and the separate Civil and Mechanical approaches.
+Approach a green entrance marker on foot and press **E**, or select a building in **Building view** and use its **Enter** button. Your character opens the door and steps inside. Use **Exit to campus** in the sidebar or press **E** at the interior entrance to return outdoors.
+
+- CSE has connected new and old wings, furnished rooms, and a directory for each floor.
+- Central Library has reading tables, book stacks, and split stairs to the upper galleries. The Multipurpose Hall has red seating, aisles, and a raised stage.
+- Nalanda has six tiered lecture halls, the Graphics Designing Room, and a washroom. L-103 to L-105 face the Library side, and L-106 to L-108 face the Electrical Engineering side.
+- Pushpagiri and Takshashila have two walkable floors with numbered lecture halls, open galleries, stairs, and washrooms. Their entrance views face each other across the covered walkway. Electrical Engineering and ECE have separate road-facing entrance views.
+
+**Main gate** also offers an entrance fountain view. The Civil covered path ends in the passage between Old CSE and IT. The plan shows the Atal Bhawan perimeter drive, the Library road from TNP parking, and the separate Civil and Mechanical approaches.
 
 **Settings** pauses walking and lets you change render resolution, mouse sensitivity, vertical look inversion, player field of view, camera motion and control hints. Preferences apply immediately and are saved in the current browser. **Reset defaults** restores the starting values.
 

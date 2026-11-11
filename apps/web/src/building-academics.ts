@@ -12,6 +12,7 @@ import { annotationToWorld } from "@gta-mmmut/world-data";
 import { campusAccess } from "@gta-mmmut/world-data/campus-access";
 import { campusBuildings } from "@gta-mmmut/world-data/campus-buildings";
 import earcut from "earcut";
+import type { BuildingDoorway } from "./building-interiors";
 
 type Point = readonly [x: number, z: number];
 type Front = { axis: "x" | "z"; edge: number; outward: 1 | -1 };
@@ -42,7 +43,7 @@ function clipEast(outline: readonly Point[], x: number) {
   return clipped;
 }
 
-export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): void {
+export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): readonly BuildingDoorway[] {
   function material(name: string, color: string, roughness = 0.9) {
     const surface = new PBRMaterial(name, scene);
     surface.albedoColor = Color3.FromHexString(color).toLinearSpace();
@@ -92,6 +93,33 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): v
     return mesh;
   }
 
+  function entranceVolume(
+    name: string, outline: readonly Point[], front: Front, center: number,
+    width: number, openingHeight: number, top: number, surface: PBRMaterial,
+  ) {
+    const along = front.axis === "x" ? 1 : 0;
+    const across = 1 - along;
+    const left = center - width / 2;
+    const right = center + width / 2;
+    const edge = outline.findIndex((start, index) => {
+      const end = outline[(index + 1) % outline.length];
+      return Math.abs(start[across] - front.edge) < 0.001 && Math.abs(end[across] - front.edge) < 0.001
+        && Math.min(start[along], end[along]) < left && Math.max(start[along], end[along]) > right;
+    });
+    if (edge < 0) return volume(name, outline, 0, top, surface);
+    const start = outline[edge];
+    const end = outline[(edge + 1) % outline.length];
+    const [a, b] = start[along] < end[along] ? [left, right] : [right, left];
+    const depth = width / 2 + 0.38;
+    const recess = [
+      position(front, a, 0), position(front, a, -depth),
+      position(front, b, -depth), position(front, b, 0),
+    ];
+    const lower = outline.flatMap((point, index) => index === edge ? [point, ...recess] : [point]);
+    volume(`${name}-above-doors`, outline, openingHeight, top, surface);
+    return volume(name, lower, 0, openingHeight, surface);
+  }
+
   function window(front: Front, along: number, y: number, width: number, height: number, glazing = glass, projection = 0) {
     box(front, light, along, y, projection + 0.025, width + 0.18, height + 0.18, 0.09);
     box(front, dark, along, y, projection + 0.064, width, height, 0.05);
@@ -129,7 +157,7 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): v
   const csePaving = material("cse-entry-concrete", "#ada99d");
   const cseApron = [[694, 187.4], [748, 191.04], [748, 204], [694, 204]] as const;
   volume("B22-entry-apron", cseApron.map(annotationToWorld), -0.02, 0.049, csePaving, false);
-  volume(cse.id, cseWalls, 0, cseHeight, cream);
+  entranceVolume(cse.id, cseWalls, cseFront, porchX, 2.48, 2.62, cseHeight, cream);
   volume("B22-roof-cap", cseWalls, cseHeight, cseHeight + 0.15, roof, false);
   box(cseFront, cream, towerX, cseHeight + (towerHeight - cseHeight) / 2, -4.25,
     7.6, towerHeight - cseHeight, 8.5, true);
@@ -152,7 +180,6 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): v
   for (const offset of [-2.9, 2.9]) {
     window(cseFront, porchX + offset, 5.13, 1.36, 1.43, glass, insertFace);
   }
-  box(cseFront, door, porchX, 1.29, 0.105, 2.48, 2.58, 0.16);
   for (const x of [cse.west + 2.7, cse.west + 6.35]) {
     window(cseFront, x, 1.6, 1.16, 1.24);
     window(cseFront, x, 5.08, 1.16, 1.22);
@@ -217,6 +244,7 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): v
   const canopyCenter = hall.west + hallWidth * 0.37;
   const canopyWidth = hallWidth * 0.52;
   const canopyDepth = 2.75;
+  const hallBackOfPorch: Front = { ...hallFront, edge: hallFront.edge - canopyDepth };
   const hallTop = hall.height * 1.36;
   // The eaves and canopy keep the traced outline while the entrance wall sits behind them.
   const hallUpper = hall.outline.map(([x, z]): Point => [x, Math.min(z, hallWall.edge)]);
@@ -228,7 +256,7 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): v
   volume(hallRear.id, hallRear.outline, 0, hallTop - 0.35, cream);
   volume("B16-roof-cap", hallRear.outline, hallTop - 0.35, hallTop - 0.18, roof, false);
   // Avoid self-shadow bands on the broad, pale wall at campus shadow-map scale.
-  volume(hall.id, hallBase, 0, 3.48, cream).receiveShadows = false;
+  entranceVolume(hall.id, hallBase, hallBackOfPorch, canopyCenter, 4.65, 2.74, 3.48, cream).receiveShadows = false;
   volume("B17-upper-hall", hallUpper, 3.48, hallTop, cream).receiveShadows = false;
   volume("B17-roof-cap", hall.outline, hallTop, hallTop + 0.14, roof, false);
   box(hallFront, csePaving, canopyCenter, 0.021, (0.5 - canopyDepth) / 2,
@@ -238,8 +266,6 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): v
   for (const direction of [-1, 1]) {
     box(hallFront, cream, canopyCenter + direction * (canopyWidth / 2 - 0.62), 1.63, -0.27, 0.48, 3.26, 0.48, true);
   }
-  const hallBackOfPorch: Front = { ...hallFront, edge: hallFront.edge - canopyDepth };
-  box(hallBackOfPorch, door, canopyCenter, 1.35, 0.035, 4.65, 2.7, 0.14);
   const hallGlazing = material("hall-warm-glazing", "#776a59", 0.48);
   const bayPitch = 4.18;
   for (let i = -1; i <= 1; i++) {
@@ -278,17 +304,16 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): v
   const libraryWings = clipEast(library.outline, inset);
   const libraryRoofHeight = library.height * 0.69;
   const libraryPortalTop = library.height * 1.18;
-  volume(library.id, libraryWings, 0, libraryRoofHeight, libraryWall);
+  const libraryDoorFront: Front = { ...libraryFront, edge: inset };
+  entranceVolume(library.id, libraryWings, libraryDoorFront, libraryCenter, 3.23, 2.58, libraryRoofHeight, libraryWall);
   volume("B75-wing-roofs", libraryWings, libraryRoofHeight, libraryRoofHeight + 0.12, roof, false);
   box(libraryFront, libraryWall, libraryCenter, colonnadeTop, -(inset - library.west) / 2,
     librarySpan, 0.28, inset - library.west, true);
   box(libraryFront, libraryWall, libraryCenter, (libraryPortalTop + colonnadeTop) / 2, -4.6,
     librarySpan * 0.83, libraryPortalTop - colonnadeTop, 8.1, true);
-  const libraryDoorFront: Front = { ...libraryFront, edge: inset };
   for (const ratio of [-0.46, -0.29, -0.12, 0.12, 0.29, 0.46]) {
     box(libraryFront, cream, libraryCenter + librarySpan * ratio, 1.43, -0.23, 0.30, 2.86, 0.32, true);
   }
-  box(libraryDoorFront, door, libraryCenter, 1.28, 0.058, 3.23, 2.54, 0.14);
   for (const offset of [-4.5, 4.5]) {
     window(libraryDoorFront, libraryCenter + offset, 1.45, 4.85, 1.95);
   }
@@ -326,4 +351,9 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): v
       if (collidable) shadows.addShadowCaster(mesh);
     }
   }
+  return [
+    { id: "cse", point: position(cseFront, porchX, 0.075), outward: [0, -1], width: 2.48, height: 2.55, finish: "#37494d" },
+    { id: "hall", point: position(hallBackOfPorch, canopyCenter, 0.075), outward: [0, 1], width: 4.65, height: 2.67, finish: "#5f4836" },
+    { id: "library", point: position(libraryDoorFront, libraryCenter, 0.075), outward: [-1, 0], width: 3.23, height: 2.51, finish: "#57463c" },
+  ];
 }

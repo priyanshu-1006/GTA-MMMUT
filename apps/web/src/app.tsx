@@ -12,7 +12,8 @@ import { coveredWalkways } from "@gta-mmmut/world-data/covered-walkways";
 import { deoriaRoad } from "@gta-mmmut/world-data/deoria-road";
 import { campusRegistry } from "@gta-mmmut/world-data/registry";
 import type { createEntranceScene, EntranceView } from "./entrance-scene";
-import type { createCseInteriorScene, CseLocation } from "./cse-interior-scene";
+import type { createBuildingInteriorScene, InteriorLocation } from "./building-interior-scene";
+import { buildingInteriors, interiorForView, type InteriorId } from "./building-interiors";
 import type { CseRoom } from "./cse-interior-layout";
 import { GameSettingsPanel, loadGameSettings, saveGameSettings, type GameSettings } from "./game-settings";
 import { loadPlayerAppearance, savePlayerAppearance, type PlayerAppearance } from "./player-appearance";
@@ -220,6 +221,11 @@ const cameraLabels: Record<EntranceView, string> = {
   itrc: "I.T. RESOURCE CENTER",
   cafeteria: "UNIVERSITY CAFETERIA",
   takshashila: "TAKSHASHILA COURTYARD",
+  "takshashila-entry": "TAKSHASHILA ENTRANCE",
+  pushpagiri: "PUSHPAGIRI ENTRANCE",
+  ece: "ELECTRONICS & COMMUNICATION ENGINEERING",
+  electrical: "ELECTRICAL ENGINEERING",
+  nalanda: "NALANDA LECTURE HALL COMPLEX",
   gate: "MAIN GATE",
   "old-gate": "OLD GATE",
   deoria: "DEORIA ROAD",
@@ -248,7 +254,12 @@ const buildingViews = [
   { view: "it", label: "IT Department (B24 north)" },
   { view: "itrc", label: "I.T. Resource Center (B24 south)" },
   { view: "cafeteria", label: "B21 University Cafeteria" },
+  { view: "nalanda", label: "B33–B35 Nalanda Lecture Hall Complex" },
+  { view: "pushpagiri", label: "B45 Pushpagiri entrance" },
+  { view: "takshashila-entry", label: "B47 Takshashila entrance" },
   { view: "takshashila", label: "B47 Takshashila courtyard" },
+  { view: "ece", label: "B46 Electronics & Communication Engineering" },
+  { view: "electrical", label: "B32 Electrical Engineering" },
 ] as const;
 
 const entranceDetails = [
@@ -317,7 +328,7 @@ function CseDirectory({ rooms }: { rooms: readonly CseRoom[] }) {
 }
 
 const initialPlayerStatus: PlayerStatus = {
-  camera: "follow", vehicle: null, vehicleKind: null, nearby: null, portalNearby: false, speed: 0,
+  camera: "follow", vehicle: null, vehicleKind: null, nearby: null, portalNearby: null, speed: 0,
 };
 
 export function App() {
@@ -325,10 +336,10 @@ export function App() {
   const mapMarkerRef = useRef<SVGGElement>(null);
   const sessionRef = useRef<ReturnType<typeof createEntranceScene> | null>(null);
   const engineRef = useRef<Engine | null>(null);
-  const cseRef = useRef<ReturnType<typeof createCseInteriorScene> | null>(null);
-  const cseLoadingRef = useRef(false);
-  const enterCseRef = useRef<() => void>(() => {});
-  const exitCseRef = useRef<() => void>(() => {});
+  const interiorRef = useRef<Awaited<ReturnType<typeof createBuildingInteriorScene>> | null>(null);
+  const interiorLoadingRef = useRef(false);
+  const enterBuildingRef = useRef<(id: InteriorId) => void>(() => {});
+  const exitBuildingRef = useRef<() => void>(() => {});
   const [state, setState] = useState<PreviewState>("loading");
   const [mapOpen, setMapOpen] = useState(false);
   const [cameraView, setCameraView] = useState<EntranceView>("entrance");
@@ -341,78 +352,92 @@ export function App() {
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const wardrobeRef = useRef(false);
   const [playerStatus, setPlayerStatus] = useState(initialPlayerStatus);
-  const [csePlayerStatus, setCsePlayerStatus] = useState<PlayerStatus>({ ...initialPlayerStatus, camera: "first" });
-  const [cseLocation, setCseLocation] = useState<CseLocation>();
-  const [insideCse, setInsideCse] = useState(false);
-  const [loadingCse, setLoadingCse] = useState(false);
-  const [cseError, setCseError] = useState(false);
+  const [interiorPlayerStatus, setInteriorPlayerStatus] = useState<PlayerStatus>({ ...initialPlayerStatus, camera: "first" });
+  const [interiorLocation, setInteriorLocation] = useState<InteriorLocation>();
+  const [insideBuilding, setInsideBuilding] = useState<InteriorId | null>(null);
+  const [loadingInterior, setLoadingInterior] = useState<InteriorId | null>(null);
+  const [interiorError, setInteriorError] = useState(false);
   const showMap = mapOpen || state === "unavailable";
   const overviewActive = !showMap && cameraView === "network";
   const buildingsActive = !showMap && buildingViews.some(({ view }) => view === cameraView);
   const gateActive = !showMap && entranceDetails.some(({ view }) => view === cameraView);
   const walking = cameraView === "walk";
-  const showMinimap = walking && !insideCse && !showMap && state === "ready";
-  const canEnterCse = !showMap && (cameraView === "cse" || cameraView === "cse-complex" || (walking && playerStatus.portalNearby));
+  const showMinimap = walking && !insideBuilding && !showMap && state === "ready";
+  const nearbyBuilding = walking && playerStatus.portalNearby !== "exit" ? playerStatus.portalNearby : null;
+  const entryTarget = loadingInterior ?? (!showMap ? nearbyBuilding ?? interiorForView(cameraView) : null);
+  const currentInterior = insideBuilding ? buildingInteriors[insideBuilding] : null;
 
   function changeView(view: EntranceView) {
-    if (cseLoadingRef.current) return;
+    if (interiorLoadingRef.current) return;
     sessionRef.current?.setWalkPaused(false);
     sessionRef.current?.setView(view);
     setCameraView(view);
     setMapOpen(false);
   }
 
-  async function enterCse() {
+  async function enterBuilding(id: InteriorId) {
     const renderer = engineRef.current;
     const outdoor = sessionRef.current;
     const canvas = canvasRef.current;
-    if (!renderer || !outdoor || !canvas || cseRef.current || cseLoadingRef.current || playerStatus.vehicle || showMap) return;
-    cseLoadingRef.current = true;
-    setLoadingCse(true);
-    setCseError(false);
+    if (!renderer || !outdoor || !canvas || interiorRef.current || interiorLoadingRef.current || playerStatus.vehicle || showMap) return;
+    interiorLoadingRef.current = true;
+    setLoadingInterior(id);
+    setInteriorError(false);
     outdoor.setWalkPaused(true);
+    let interior: Awaited<ReturnType<typeof createBuildingInteriorScene>> | undefined;
     try {
-      const { createCseInteriorScene } = await import("./cse-interior-scene");
+      const { createBuildingInteriorScene } = await import("./building-interior-scene");
       if (engineRef.current !== renderer) return;
-      const interior = createCseInteriorScene(renderer, canvas, setCsePlayerStatus, setCseLocation,
-        () => exitCseRef.current());
-      cseRef.current = interior;
+      interior = await createBuildingInteriorScene(id, renderer, canvas, setInteriorPlayerStatus, setInteriorLocation,
+        () => exitBuildingRef.current());
+      if (engineRef.current !== renderer) {
+        interior.scene.dispose();
+        return;
+      }
+      const crossed = await outdoor.playBuildingEntry(id);
+      if (engineRef.current !== renderer) {
+        interior.scene.dispose();
+        return;
+      }
+      if (!crossed) throw new Error("The building doorway was unavailable.");
+      interiorRef.current = interior;
       interior.setSettings(settingsRef.current);
       interior.setAppearance(appearanceRef.current);
       outdoor.suspend();
       interior.activate();
-      setInsideCse(true);
+      setInsideBuilding(id);
     } catch (error) {
-      console.error("Unable to open the CSE interior.", error);
-      cseRef.current?.scene.dispose();
-      cseRef.current = null;
+      interior?.scene.dispose();
+      if (engineRef.current !== renderer) return;
+      console.error("Unable to open the building interior.", error);
+      interiorRef.current = null;
       outdoor.setView(cameraView);
       outdoor.setWalkPaused(false);
-      setCseError(true);
+      setInteriorError(true);
     } finally {
-      cseLoadingRef.current = false;
-      if (engineRef.current === renderer) setLoadingCse(false);
+      interiorLoadingRef.current = false;
+      if (engineRef.current === renderer) setLoadingInterior(null);
     }
   }
 
-  function exitCse() {
-    const interior = cseRef.current;
+  function exitBuilding() {
+    const interior = interiorRef.current;
     if (!interior) return;
-    cseRef.current = null;
+    interiorRef.current = null;
     interior.scene.dispose();
     sessionRef.current?.setView(cameraView);
     sessionRef.current?.setWalkPaused(false);
-    setInsideCse(false);
-    setCseLocation(undefined);
+    setInsideBuilding(null);
+    setInteriorLocation(undefined);
   }
 
   function setPlayPaused(value: boolean) {
-    if (cseRef.current) cseRef.current.setPaused(value);
+    if (interiorRef.current) interiorRef.current.setPaused(value);
     else sessionRef.current?.setWalkPaused(value);
   }
 
   function toggleMap() {
-    if (cseLoadingRef.current) return;
+    if (interiorLoadingRef.current) return;
     if (!mapOpen) setMapPlayerPoint(sessionRef.current?.mapPose()?.point ?? null);
     sessionRef.current?.setWalkPaused(!mapOpen);
     setMapOpen(!mapOpen);
@@ -434,7 +459,7 @@ export function App() {
     setAppearance(value);
     savePlayerAppearance(value);
     sessionRef.current?.setPlayerAppearance(value);
-    cseRef.current?.setAppearance(value);
+    interiorRef.current?.setAppearance(value);
   }
 
   function updateSettings(value: GameSettings) {
@@ -442,17 +467,17 @@ export function App() {
     setSettings(value);
     saveGameSettings(value);
     sessionRef.current?.setSettings(value);
-    cseRef.current?.setSettings(value);
+    interiorRef.current?.setSettings(value);
   }
 
   useEffect(() => {
-    enterCseRef.current = () => { void enterCse(); };
-    exitCseRef.current = exitCse;
+    enterBuildingRef.current = (id) => { void enterBuilding(id); };
+    exitBuildingRef.current = exitBuilding;
   });
 
   useEffect(() => {
-    if ((walking || insideCse) && !showMap && !settingsOpen && !wardrobeOpen) canvasRef.current?.focus({ preventScroll: true });
-  }, [walking, insideCse, showMap, settingsOpen, wardrobeOpen]);
+    if ((walking || insideBuilding) && !showMap && !settingsOpen && !wardrobeOpen) canvasRef.current?.focus({ preventScroll: true });
+  }, [walking, insideBuilding, showMap, settingsOpen, wardrobeOpen]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -475,7 +500,7 @@ export function App() {
         engine = renderer;
         engineRef.current = renderer;
         const session = createEntranceScene(renderer, target, setPlayerStatus,
-          () => enterCseRef.current(), () => changeView("cse"));
+          (id) => enterBuildingRef.current(id), (id) => changeView(buildingInteriors[id].view));
         const entrance = session.scene;
         scene = entrance;
         sessionRef.current = session;
@@ -488,8 +513,8 @@ export function App() {
           renderer.runRenderLoop(() => {
             try {
               if (wardrobeRef.current) return;
-              if (cseRef.current) {
-                cseRef.current.scene.render();
+              if (interiorRef.current) {
+                interiorRef.current.scene.render();
                 return;
               }
               entrance.render();
@@ -504,10 +529,10 @@ export function App() {
                 }
               }
             } catch (error) {
-              if (cseRef.current) {
-                console.error("Unable to render the CSE interior.", error);
-                exitCseRef.current();
-                setCseError(true);
+              if (interiorRef.current) {
+                console.error("Unable to render the building interior.", error);
+                exitBuildingRef.current();
+                setInteriorError(true);
                 return;
               }
               renderer.stopRenderLoop();
@@ -533,8 +558,8 @@ export function App() {
       sessionRef.current = null;
       resizeObserver?.disconnect();
       engine?.stopRenderLoop();
-      cseRef.current?.scene.dispose();
-      cseRef.current = null;
+      interiorRef.current?.scene.dispose();
+      interiorRef.current = null;
       scene?.dispose();
       engine?.dispose();
     };
@@ -546,33 +571,34 @@ export function App() {
         <div className="wordmark">GTA <span>MMMUT</span></div>
         <div className="header-actions">
           <div className="header-label">CAMPUS PREVIEW <span> / </span> 10</div>
-          <button type="button" className="view-toggle settings-toggle" disabled={state !== "ready" || loadingCse}
+          <button type="button" className="view-toggle settings-toggle" disabled={state !== "ready" || Boolean(loadingInterior)}
             onClick={() => toggleWardrobe(true)}>Wardrobe</button>
-          <button type="button" className="view-toggle settings-toggle" disabled={loadingCse} onClick={() => toggleSettings(true)}>
+          <button type="button" className="view-toggle settings-toggle" disabled={Boolean(loadingInterior)} onClick={() => toggleSettings(true)}>
             Settings
           </button>
         </div>
       </header>
       <div className="workspace">
-        {insideCse ? (
+        {currentInterior ? (
           <section className="panel">
-            <h1>CSE Department</h1>
-            <p>{cseLocation?.section ?? "New CSE"} · {cseLocation?.floor === 1 ? "First floor" : "Ground floor"}</p>
-            {cseLocation?.room && <p className="cse-current-room">{cseLocation.room.label}</p>}
+            <h1>{currentInterior.title}</h1>
+            {interiorLocation && <p>{interiorLocation.section}{interiorLocation.floor !== undefined &&
+              (interiorLocation.floor === 1 ? " · First floor" : " · Ground floor")}</p>}
+            {interiorLocation?.room && <p className="cse-current-room">{interiorLocation.room}</p>}
             <div className="view-options">
-              <button className="view-toggle walk-toggle" type="button" onClick={exitCse}>
-                Exit to campus {csePlayerStatus.portalNearby && <kbd>E</kbd>}
+              <button className="view-toggle walk-toggle" type="button" onClick={exitBuilding}>
+                Exit to campus {interiorPlayerStatus.portalNearby && <kbd>E</kbd>}
               </button>
             </div>
-            <select className="detail-picker" aria-label="Interior camera" value={csePlayerStatus.camera}
+            <select className="detail-picker" aria-label="Interior camera" value={interiorPlayerStatus.camera}
               onChange={(event) => {
-                cseRef.current?.setCamera(event.currentTarget.value as PlayerCamera);
+                interiorRef.current?.setCamera(event.currentTarget.value as PlayerCamera);
                 canvasRef.current?.focus({ preventScroll: true });
               }}>
               {Object.entries(playerCameras).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
             </select>
-            <p className="cse-directions">Follow the corridor to Old CSE. Use the stairs on the left in New CSE to change floors.</p>
-            {cseRef.current && <CseDirectory rooms={cseRef.current.rooms} />}
+            <p className="cse-directions">{currentInterior.directions}</p>
+            {interiorRef.current?.rooms && <CseDirectory rooms={interiorRef.current.rooms} />}
           </section>
         ) : (
         <section className="panel">
@@ -687,24 +713,24 @@ export function App() {
               </button>
             </div>
           )}
-          {canEnterCse && (
+          {entryTarget && (
             <div className="vehicle-panel">
-              <button className="view-toggle walk-toggle" type="button" disabled={loadingCse} onClick={() => void enterCse()}>
-                {loadingCse ? "Opening CSE…" : "Enter CSE"} {walking && <kbd>E</kbd>}
+              <button className="view-toggle walk-toggle" type="button" disabled={Boolean(loadingInterior)} onClick={() => void enterBuilding(entryTarget)}>
+                {loadingInterior ? "Opening entrance…" : `Enter ${buildingInteriors[entryTarget].entryName}`} {walking && <kbd>E</kbd>}
               </button>
             </div>
           )}
-          {cseError && <p role="alert">Unable to open CSE. Try again from the building view.</p>}
+          {interiorError && <p role="alert">Unable to open the building. Try again from Building view.</p>}
           <p className="coverage-note">
             <strong>{campusBuildings.length} of {confirmedBuildings}</strong> confirmed structure IDs mapped
           </p>
           <p className="scale-note">Route alignment, building dimensions, and map scale are provisional.</p>
         </section>
         )}
-        <section className={showMinimap ? "viewport viewport-tracking" : "viewport"} aria-label="Entrance viewer">
+        <section className={showMinimap ? "viewport viewport-tracking" : insideBuilding ? "viewport viewport-interior" : "viewport"} aria-label="Entrance viewer">
           <canvas
             ref={canvasRef}
-            aria-label={insideCse ? "3D CSE interior" : "3D campus entrance preview"}
+            aria-label={currentInterior ? `3D ${currentInterior.entryName} interior` : "3D campus entrance preview"}
             aria-hidden={showMap}
             className={showMap ? "canvas-hidden" : undefined}
             tabIndex={showMap ? -1 : 0}
@@ -712,11 +738,11 @@ export function App() {
           {showMap && <EntranceMap playerPoint={mapPlayerPoint} />}
           {showMinimap && <EntranceMap markerRef={mapMarkerRef} />}
           <div className="viewer-label">
-            {insideCse ? "CSE INTERIOR" : showMap ? "PLAN VIEW" : walking && playerStatus.vehicle ? "VEHICLE CHASE" : cameraLabels[cameraView]}
+            {currentInterior ? `${currentInterior.entryName.toUpperCase()} INTERIOR` : showMap ? "PLAN VIEW" : walking && playerStatus.vehicle ? "VEHICLE CHASE" : cameraLabels[cameraView]}
           </div>
           {!showMap && state === "ready" && settings.showControlHints && (
             <div className="controls">
-              {insideCse
+              {insideBuilding
                 ? "WASD move · Arrows look · Shift sprint · V camera · R return to lobby"
                 : walking
                 ? playerStatus.vehicle ? playerStatus.vehicleKind === "car"
@@ -727,7 +753,7 @@ export function App() {
             </div>
           )}
           <div className="viewer-status" role="status" data-state={state}>
-            {state === "ready" && (loadingCse ? "Opening CSE…" : insideCse ? "CSE interior ready" : "3D preview ready")}
+            {state === "ready" && (loadingInterior ? "Opening entrance…" : currentInterior ? `${currentInterior.entryName} interior ready` : "3D preview ready")}
             {state === "loading" && "Loading 3D preview…"}
             {state === "unavailable" && "3D preview unavailable. Showing plan view."}
           </div>

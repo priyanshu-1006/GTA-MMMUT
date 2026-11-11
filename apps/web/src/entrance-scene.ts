@@ -29,6 +29,9 @@ import { deoriaRoad } from '@gta-mmmut/world-data/deoria-road';
 import earcut from 'earcut';
 import { createCampusBuildings } from './admin-buildings';
 import { createAcademicFacades } from './building-academics';
+import { academicFrontages, createReferencedAcademicFacades } from './building-referenced-academics';
+import { createBuildingDoors } from './building-doors';
+import { buildingInteriors, type InteriorId } from './building-interiors';
 import { createCampusLandmarks } from './building-campus-landmarks';
 import { createEngineeringFacades } from './building-engineering';
 import { createB70Facade } from './building-b70';
@@ -54,13 +57,14 @@ import type { PlayerStatus } from './player-controls';
 type Point = readonly [x: number, z: number];
 export type EntranceView = 'entrance' | 'network' | 'buildings' | 'placement' | 'atal'
   | 'cse' | 'cse-complex' | 'hall' | 'library' | 'mechanical' | 'mechanical-south' | 'civil' | 'civil-two' | 'it'
-  | 'itrc' | 'cafeteria' | 'takshashila' | 'open-stage' | 'fountain'
+  | 'itrc' | 'cafeteria' | 'takshashila' | 'takshashila-entry' | 'pushpagiri' | 'ece' | 'electrical' | 'nalanda' | 'open-stage' | 'fountain'
   | 'gate' | 'old-gate' | 'deoria' | 'forecourt' | 'atal-garden' | 'entrance-garden' | 'tnp-parking' | 'walkway' | 'walk';
 
 const renderScale = { low: 1.6, balanced: 1.2, high: 1 };
 const walkFogDensity = 0.00061;
 const asphaltUrl = new URL('./assets/materials/worn-asphalt.webp', import.meta.url).href;
 const concreteUrl = new URL('./assets/materials/concrete-wall.webp', import.meta.url).href;
+const nalandaEntry = annotationToWorld([980, 393]);
 
 function matte(scene: Scene, name: string, hex: string) {
   const material = new PBRMaterial(name, scene);
@@ -249,7 +253,14 @@ function createCamera(
   const [fountainX, fountainZ] = annotationToWorld(splitterFountainCenter);
   const [stageLeft, stageTop, stageRight, stageBottom] = openStage.bounds;
   const [stageX, stageZ] = annotationToWorld([(stageLeft + stageRight) / 2, (stageTop + stageBottom) / 2]);
-  const closeViews = {
+  function frontageCamera(key: keyof typeof academicFrontages, height: number, radius: number, fov: number) {
+    const { view: [x, z], outward } = academicFrontages[key];
+    return { target: new Vector3(x, height, z), halfWidth: 0, alpha: outward * Math.PI / 2, beta: 1.56,
+      minRadius: Math.min(radius, 2.5), radius, fov };
+  }
+  const closeViews: Record<Exclude<EntranceView, 'walk' | 'entrance' | 'network'>, {
+    target: Vector3; halfWidth: number; alpha: number; beta: number; minRadius: number; radius?: number; fov?: number;
+  }> = {
     buildings: { ...administration, alpha: Math.PI / 2 + 0.14, beta: 1.55, minRadius: 7 },
     placement: { ...placement, alpha: Math.PI / 2, beta: 1.55, minRadius: 7 },
     atal: {
@@ -341,6 +352,14 @@ function createCamera(
       target: new Vector3(180, 2, -163.75),
       halfWidth: 38, alpha: 1.1, beta: 0.62, minRadius: 14,
     },
+    'takshashila-entry': frontageCamera('takshashila', 2.15, 5.4, 1.03),
+    pushpagiri: frontageCamera('pushpagiri', 2.15, 6.8, 1.03),
+    ece: frontageCamera('ece', 2.7, 2.35, 1.75),
+    electrical: frontageCamera('electrical', 2.16, 3.6, 1.52),
+    nalanda: {
+      target: new Vector3(nalandaEntry[0], 2.3, nalandaEntry[1]),
+      halfWidth: 10, alpha: 2.98, beta: 1.39, minRadius: 5,
+    },
     walkway: {
       target: new Vector3(walkStart[0] + walkDx * 10 / walkLength, 1.6, walkStart[1] + walkDz * 10 / walkLength),
       halfWidth: 0,
@@ -360,6 +379,8 @@ function createCamera(
 
   function applyView(view: Exclude<EntranceView, 'walk'>) {
     const aspect = Math.max(0.65, canvas.clientWidth / Math.max(1, canvas.clientHeight));
+    const close = view === 'entrance' || view === 'network' ? null : closeViews[view];
+    camera.fov = close?.fov ?? 0.8;
     const verticalTangent = Math.tan(camera.fov / 2);
     // The nearest edge projects larger than the map center in the overview.
     const networkRadius = Math.max(
@@ -368,7 +389,6 @@ function createCamera(
     ) * 1.13 + halfDepth * Math.sin(networkBeta);
     const entranceRadius = entranceLength * 1.88 * Math.max(1, 1.05 / aspect);
     const overview = view === 'network';
-    const close = view === 'entrance' || view === 'network' ? null : closeViews[view];
     camera.movement.resetRotationVelocity();
     camera.movement.resetPanVelocity();
     camera.movement.resetZoomVelocity();
@@ -376,7 +396,7 @@ function createCamera(
     camera.alpha = overview ? Math.PI / 2 : close?.alpha ?? 1.27;
     camera.beta = overview ? networkBeta : close?.beta ?? 1;
     camera.radius = overview ? networkRadius : close
-      ? Math.max(view === 'walkway' ? 8 : 17, close.halfWidth / (verticalTangent * aspect))
+      ? close.radius ?? Math.max(view === 'walkway' ? 8 : 17, close.halfWidth / (verticalTangent * aspect))
       : entranceRadius;
     camera.lowerRadiusLimit = close?.minRadius ?? 18;
     camera.upperBetaLimit = close ? Math.max(1.568, close.beta) : 1.48;
@@ -406,8 +426,8 @@ export function createEntranceScene(
   engine: Engine,
   canvas: HTMLCanvasElement,
   onPlayerStatus: (status: PlayerStatus) => void,
-  onEnterCse: () => void,
-  onSelectCse: () => void,
+  onEnterBuilding: (id: InteriorId) => void,
+  onSelectBuilding: (id: InteriorId) => void,
 ) {
   const scene = new Scene(engine);
   scene.useRightHandedSystem = true;
@@ -526,26 +546,31 @@ export function createEntranceScene(
   createEntranceFountain(scene, shadows);
   createCampusGardens(scene, shadows);
   createCampusBuildings(scene, shadows);
-  createAcademicFacades(scene, shadows);
+  const academicDoors = createAcademicFacades(scene, shadows);
   createEngineeringFacades(scene, shadows);
   createCampusLandmarks(scene, shadows);
+  createReferencedAcademicFacades(scene, shadows);
   createB70Facade(scene, shadows);
   createB71Facade(scene, shadows);
   createB72Facade(scene, shadows);
   createCoveredWalkways(scene, shadows);
   const vehicles = createCampusVehicles(scene, shadows, worldPoints);
-  const cse = campusBuildings.find(({ id }) => id === 'B22')!;
-  const porchNorth = Math.min(...cse.footprint.map(([, y]) => y));
-  const porchEdges = cse.footprint.filter(([, y]) => y === porchNorth);
-  const [entryX, entryZ] = annotationToWorld([(porchEdges[0][0] + porchEdges[1][0]) / 2, porchNorth]);
+  const doors = createBuildingDoors(scene, [
+    ...academicDoors,
+    { id: 'nalanda', point: nalandaEntry, outward: [-1, 0], width: 3.1, height: 2.65, finish: '#4b6668' },
+    { id: 'pushpagiri', point: academicFrontages.pushpagiri.door, outward: [0, academicFrontages.pushpagiri.outward],
+      width: 3, height: 2.7, finish: '#30393b' },
+    { id: 'takshashila', point: academicFrontages.takshashila.door, outward: [0, academicFrontages.takshashila.outward],
+      width: 3, height: 2.7, finish: '#4a666b' },
+  ]);
   const shadowMap = shadows.getShadowMap();
   if (shadowMap) shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
   const walk = createCampusWalk(scene, canvas, gate, worldPoints, (x, z) => {
     if (sidewalks.some((outline) => containsPoint(outline, [x, z]))) return entranceSidewalkHeight;
   }, vehicles, onPlayerStatus, {
     portal: {
-      contains: ([x, z]) => Math.abs(x - entryX) < 3.3 && z > entryZ - 3 && z < entryZ + 0.7,
-      interact: onEnterCse,
+      at: doors.nearby,
+      interact: (id) => { if (id !== 'exit') onEnterBuilding(id); },
     },
   });
   function vehicleAndPlayerObstacles() {
@@ -581,19 +606,37 @@ export function createEntranceScene(
     chant.update(player ? [player.x, player.z] : null);
   });
   scene.onPointerObservable.add(({ type, pickInfo }) => {
-    if (type !== PointerEventTypes.POINTERPICK || view === 'walk' || paused) return;
-    const name = pickInfo?.pickedMesh?.name;
-    if (name === 'B22' || name === 'B22-roof-cap' || name === 'B22-nameplate') onSelectCse();
+    if (type !== PointerEventTypes.POINTERPICK || paused) return;
+    const mesh = pickInfo?.pickedMesh;
+    if (!mesh) return;
+    const marker = mesh.metadata?.buildingInterior;
+    const id = (Object.keys(buildingInteriors) as InteriorId[]).find((key) => marker === key ||
+      buildingInteriors[key].meshIds.some((name) => mesh.name === name || mesh.name.startsWith(`${name}-`)));
+    if (!id) return;
+    if (view !== 'walk') onSelectBuilding(id);
+    else {
+      const player = walk.worldPosition();
+      if (player && doors.nearby([player.x, player.z], player.y) === id && !vehicles.active()) onEnterBuilding(id);
+    }
   });
   scene.onDisposeObservable.addOnce(chant.dispose);
   return {
     scene,
+    playBuildingEntry(id: InteriorId) {
+      const door = doors.get(id);
+      if (!door || vehicles.active()) return Promise.resolve(false);
+      preview.camera.detachControl();
+      scene.fogDensity = walkFogDensity;
+      walk.setActive(true);
+      return walk.playEntry(door.definition, door.setOpen, view !== 'walk');
+    },
     suspend() {
       setWalkPaused(true);
       walk.setActive(false);
       preview.camera.detachControl();
     },
     setView(nextView: EntranceView) {
+      walk.finishEntry();
       view = nextView;
       if (view === 'walk') {
         preview.camera.detachControl();

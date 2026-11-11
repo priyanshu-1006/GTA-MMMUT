@@ -14,6 +14,7 @@ PELVIS = "pelvis"
 GROUNDED = {
     "Idle_Loop", "Walk_Loop", "Jog_Fwd_Loop", "Sprint_Loop",
     "Crouch_Fwd_Loop", "Crouch_Idle_Loop", "Idle_Talking_Loop",
+    "Interact",
 }
 LIMB_CHILD = {
     f"{parent}_{side}": f"{child}_{side}"
