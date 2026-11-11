@@ -41,6 +41,7 @@ import { createCampusGate } from './campus-gate';
 import { createCampusAccess } from './campus-access';
 import { createCampusBoundary } from './campus-boundary';
 import { createCampusGardens } from './campus-gardens';
+import { createCampusRoadAsphalt, createCampusRoadFinishing } from './campus-road-finishing';
 import { createCampusSky } from './campus-sky';
 import { createCampusWalk } from './campus-walk';
 import { createCampusVehicles } from './campus-vehicles';
@@ -51,20 +52,20 @@ import { createCoveredWalkways } from './campus-walkways';
 import { createDeoriaRoad } from './deoria-road';
 import { createEntranceFinishing, entranceSidewalkHeight } from './entrance-finishing';
 import { createEntranceFountain } from './entrance-fountain';
+import { nalandaCampusCourt, nalandaCampusDeckY, nalandaCampusEntrance, nalandaCampusFloor } from './lecture-courtyards';
 import type { GameSettings } from './game-settings';
 import type { PlayerStatus } from './player-controls';
 
 type Point = readonly [x: number, z: number];
 export type EntranceView = 'entrance' | 'network' | 'buildings' | 'placement' | 'atal'
   | 'cse' | 'cse-complex' | 'hall' | 'library' | 'mechanical' | 'mechanical-south' | 'civil' | 'civil-two' | 'it'
-  | 'itrc' | 'cafeteria' | 'takshashila' | 'takshashila-entry' | 'pushpagiri' | 'ece' | 'electrical' | 'nalanda' | 'open-stage' | 'fountain'
+  | 'itrc' | 'cafeteria' | 'takshashila' | 'takshashila-entry' | 'pushpagiri' | 'ece' | 'ece-roadside'
+  | 'electrical' | 'electrical-roadside' | 'nalanda' | 'nalanda-courtyard' | 'open-stage' | 'fountain'
   | 'gate' | 'old-gate' | 'deoria' | 'forecourt' | 'atal-garden' | 'entrance-garden' | 'tnp-parking' | 'walkway' | 'walk';
 
 const renderScale = { low: 1.6, balanced: 1.2, high: 1 };
 const walkFogDensity = 0.00061;
-const asphaltUrl = new URL('./assets/materials/worn-asphalt.webp', import.meta.url).href;
 const concreteUrl = new URL('./assets/materials/concrete-wall.webp', import.meta.url).href;
-const nalandaEntry = annotationToWorld([980, 393]);
 
 function matte(scene: Scene, name: string, hex: string) {
   const material = new PBRMaterial(name, scene);
@@ -350,15 +351,22 @@ function createCamera(
     },
     takshashila: {
       target: new Vector3(180, 2, -163.75),
-      halfWidth: 38, alpha: 1.1, beta: 0.62, minRadius: 14,
+      halfWidth: 38, alpha: 1.1, beta: 0.46, minRadius: 14,
     },
     'takshashila-entry': frontageCamera('takshashila', 2.15, 5.4, 1.03),
     pushpagiri: frontageCamera('pushpagiri', 2.15, 6.8, 1.03),
-    ece: frontageCamera('ece', 2.7, 2.35, 1.75),
-    electrical: frontageCamera('electrical', 2.16, 3.6, 1.52),
+    ece: frontageCamera('ece', 2.68, 9, 1.04),
+    'ece-roadside': frontageCamera('eceRoadside', 2.7, 2.35, 1.75),
+    electrical: frontageCamera('electrical', 1.83, 8, 1.05),
+    'electrical-roadside': frontageCamera('electricalRoadside', 2.16, 3.6, 1.52),
     nalanda: {
-      target: new Vector3(nalandaEntry[0], 2.3, nalandaEntry[1]),
+      target: new Vector3(nalandaCampusEntrance[0], 2.3, nalandaCampusEntrance[1]),
       halfWidth: 10, alpha: 2.98, beta: 1.39, minRadius: 5,
+    },
+    'nalanda-courtyard': {
+      target: new Vector3((nalandaCampusCourt[0] + nalandaCampusCourt[2]) / 2, 1.5,
+        (nalandaCampusCourt[1] + nalandaCampusCourt[3]) / 2),
+      halfWidth: 43, alpha: 2.82, beta: 0.40, minRadius: 13,
     },
     walkway: {
       target: new Vector3(walkStart[0] + walkDx * 10 / walkLength, 1.6, walkStart[1] + walkDz * 10 / walkLength),
@@ -476,16 +484,13 @@ export function createEntranceScene(
   ground.material = groundMaterial;
   ground.receiveShadows = true;
 
-  const asphalt = matte(scene, 'asphalt', '#f4f5f5');
-  asphalt.albedoTexture = new Texture(asphaltUrl, scene);
-  asphalt.albedoTexture.anisotropicFilteringLevel = 8;
+  const asphalt = createCampusRoadAsphalt(scene);
   const pavedAccess = matte(scene, 'paved-access', '#8e9188');
   addGrain(pavedAccess, scene, [142, 145, 136], 13);
   for (const [index, outline] of roadOutlines.entries()) {
     const surface = surfaces[index];
-    const material = surface.kind === 'paved-connection' ? pavedAccess : asphalt;
     const hole = containsPoint(outline, island[0]) ? island : undefined;
-    pavedPolygon(scene, surface.id, outline, material, 0.025, { hole, depth: 0.06 });
+    pavedPolygon(scene, surface.id, outline, asphalt, 0.025, { hole, depth: 0.06 });
   }
 
   const insetIsland = island.map(([x, z]): Point => [
@@ -499,29 +504,7 @@ export function createEntranceScene(
   pavedPolygon(scene, 'splitter-island-verge', insetIsland, matte(scene, 'island-grass', '#667e41'), 0.23);
 
   const approach = southernEntrance.centerlines.find(({ id }) => id === 'entrance-approach')?.points.map(annotationToWorld) ?? [];
-  const paint = matte(scene, 'road-paint', '#e0dcc5');
-  paint.zOffset = -1;
-  paint.zOffsetUnits = -2;
-  const paintStrip = (name: string, width: number, height: number, [x, z]: Point, yaw: number) => {
-    const marking = CreateGround(name, { width, height }, scene);
-    marking.position.set(x, 0.04, z);
-    marking.rotation.y = yaw;
-    marking.material = paint;
-    marking.receiveShadows = true;
-  };
-  for (const { x, z, tx, tz } of pathSamples(approach, 6, 7.5, 5)) {
-    paintStrip('approach-centre-dash', 0.17, 3.3, [x, z], Math.atan2(tx, tz));
-  }
-  for (const { id, span } of southernEntrance.crosswalks) {
-    const [[ax, az], [bx, bz]] = span.map(annotationToWorld);
-    const width = Math.hypot(bx - ax, bz - az);
-    const stripes = Math.max(1, Math.round(width / 1.15));
-    const yaw = -Math.atan2(bz - az, bx - ax);
-    for (let i = 0; i < stripes; i++) {
-      const t = (i + 0.5) / stripes;
-      paintStrip(`${id}-stripe`, width / stripes * 0.54, 4.1, [ax + (bx - ax) * t, az + (bz - az) * t], yaw);
-    }
-  }
+  createCampusRoadFinishing(scene, shadows, [...roadOutlines, ...accessOutlines]);
 
   const trunk = matte(scene, 'palm-bark', '#82755d');
   const leaves = matte(scene, 'palm-leaves', '#4e6c3e');
@@ -544,7 +527,7 @@ export function createEntranceScene(
   createCampusAccess(scene, asphalt, concrete, shadows);
   const sidewalks = createEntranceFinishing(scene, shadows);
   createEntranceFountain(scene, shadows);
-  createCampusGardens(scene, shadows);
+  createCampusGardens(scene, shadows, asphalt);
   createCampusBuildings(scene, shadows);
   const academicDoors = createAcademicFacades(scene, shadows);
   createEngineeringFacades(scene, shadows);
@@ -557,7 +540,8 @@ export function createEntranceScene(
   const vehicles = createCampusVehicles(scene, shadows, worldPoints);
   const doors = createBuildingDoors(scene, [
     ...academicDoors,
-    { id: 'nalanda', point: nalandaEntry, outward: [-1, 0], width: 3.1, height: 2.65, finish: '#4b6668' },
+    { id: 'nalanda', point: nalandaCampusEntrance, outward: [-1, 0], baseY: nalandaCampusDeckY,
+      width: 3.1, height: 2.65, finish: '#4b6668' },
     { id: 'pushpagiri', point: academicFrontages.pushpagiri.door, outward: [0, academicFrontages.pushpagiri.outward],
       width: 3, height: 2.7, finish: '#30393b' },
     { id: 'takshashila', point: academicFrontages.takshashila.door, outward: [0, academicFrontages.takshashila.outward],
@@ -566,6 +550,8 @@ export function createEntranceScene(
   const shadowMap = shadows.getShadowMap();
   if (shadowMap) shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
   const walk = createCampusWalk(scene, canvas, gate, worldPoints, (x, z) => {
+    const gallery = nalandaCampusFloor(x, z);
+    if (gallery !== undefined) return gallery;
     if (sidewalks.some((outline) => containsPoint(outline, [x, z]))) return entranceSidewalkHeight;
   }, vehicles, onPlayerStatus, {
     portal: {

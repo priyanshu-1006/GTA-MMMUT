@@ -10,16 +10,22 @@ import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
 import { createInteriorFurnishing, type FurnishedInterior } from "./interior-furnishing";
+import { courtGalleries, courtStairs, courtStairHeight, inCourt, insetCourt, nalandaGalleryHeadroom,
+  nalandaGalleryRise, nalandaGalleryWidth } from "./lecture-courtyards";
 
 const leftEdge = -24;
 const wingEnd = 20;
-const outerEdge = 25;
-const hallEdge = 12;
-const courtEdge = 8.8;
+const hallEdge = 20.75;
+const outerEdge = hallEdge + 13;
+const courtEdge = hallEdge - nalandaGalleryWidth;
 const serviceEdge = 29;
 const hallWidth = (wingEnd - leftEdge) / 3;
 const hallDepth = outerEdge - hallEdge;
-const entranceZ = 6.1;
+const entranceZ = 0;
+const court = [leftEdge, -hallEdge, wingEnd, hallEdge] as const;
+const garden = insetCourt(court, nalandaGalleryWidth);
+const galleries = courtGalleries(court, garden);
+const stairs = courtStairs(garden);
 const hallHeight = 4.35;
 const doorHeight = 2.28;
 const aisleHalf = 0.99;
@@ -57,6 +63,9 @@ export function buildNalandaInterior(scene: Scene): FurnishedInterior {
   const edge = finish("tread-edges", "#a39d90");
   const paving = patterned("court-paving", "#b8aa97", "#a29482");
   const lawn = finish("court-grass", "#77895b");
+  const foliage = [finish("garden-hedges", "#4e7240"), finish("garden-leaves", "#5b824a")];
+  const flowers = [finish("garden-marigolds", "#d3a340"), finish("garden-roses", "#9f4a4d")];
+  const columnPaint = [finish("column-ochre", "#ad8550"), finish("column-green", "#598276"), finish("column-red", "#a45649")];
   const wood = patterned("dark-bench-wood", "#62412d", "#4c352a", true);
   const woodFace = finish("worn-bench-edges", "#805c42");
   const steel = finish("desk-frames", "#353b38");
@@ -258,34 +267,51 @@ export function buildNalandaInterior(scene: Scene): FurnishedInterior {
     return door;
   }
 
-  // The courtyard and covered walks keep all three wings connected at grade.
-  rect(paving, leftEdge - 0.24, -hallEdge, wingEnd, hallEdge);
-  wallX(leftEdge - 0.24, -hallEdge, entranceZ - 1.4, 2.3);
-  wallX(leftEdge - 0.24, entranceZ + 1.4, hallEdge, 2.3);
-  box(beam, leftEdge - 0.24, 2.69, entranceZ, 0.25, 0.33, 2.97);
-  signs.push({ text: "Campus exit", x: leftEdge - 0.1, y: 2.7, z: entranceZ, yaw: -Math.PI / 2, width: 2.45 });
-  for (const [x, z] of [[-11.6, -3.8], [-11.6, 3.8], [7.7, -3.8], [7.7, 3.8]]) {
-    box(beam, x, 0.11, z, 13.4, 0.22, 4.28, true);
-    box(lawn, x, 0.224, z, 13.08, 0.019, 3.98);
+  // A continuous concrete shed surrounds the open lawn, 2 feet below the deck.
+  rect(lawn, ...garden, -nalandaGalleryRise);
+  for (const [left, rear, right, front] of galleries) {
+    const [x, z] = [(left + right) / 2, (rear + front) / 2];
+    box(beam, x, -nalandaGalleryRise / 2, z, right - left, nalandaGalleryRise, front - rear);
+    rect(paving, left, rear, right, front, 0.006);
+    box(beam, x, nalandaGalleryHeadroom + 0.09, z, right - left, 0.18, front - rear, true);
   }
+  function galleryPost(x: number, z: number, index: number) {
+    box(plaster, x, nalandaGalleryHeadroom / 2, z, 0.28, nalandaGalleryHeadroom, 0.28, true);
+    box(columnPaint[index % columnPaint.length], x, 1.27, z, 0.291, 1.34, 0.291);
+  }
+  for (const [side, z] of [-courtEdge - 0.16, courtEdge + 0.16].entries()) {
+    for (let x = leftEdge + 0.4, bay = 0; x < wingEnd; x += 3.82, bay++) {
+      galleryPost(x, z, side + bay);
+      tubeLight(x + 1.35, nalandaGalleryHeadroom - 0.08, z + (side ? 1.28 : -1.28));
+    }
+  }
+  for (const [side, x] of [garden[0] - 0.16, garden[2] + 0.16].entries()) {
+    for (let z = garden[1] + 1.7, bay = 0; z < garden[3]; z += 3.77, bay++) {
+      if (Math.abs(z) > 1.6) galleryPost(x, z, side + bay);
+    }
+  }
+  for (const [side, [left, rear, right, front]] of stairs.entries()) {
+    for (let step = 0; step < 3; step++) {
+      const x = side ? right - (step + 0.5) * 0.45 : left + (step + 0.5) * 0.45;
+      const height = nalandaGalleryRise * (3 - step) / 3;
+      box(beam, x, -nalandaGalleryRise + height / 2, (rear + front) / 2, 0.45, height, front - rear);
+    }
+  }
+  for (const [row, z] of [garden[1] + 1.25, garden[3] - 1.25].entries()) {
+    for (let index = 0, x = garden[0] + 1.3; x < garden[2] - 0.9; x += 1.15, index++) {
+      box(foliage[index % 2], x, -nalandaGalleryRise + 0.20, z, 1.19, 0.4, 0.66);
+      if (index % 2 === 0) cylinder(flowers[(row + index / 2) % 2], x, -nalandaGalleryRise + 0.42, z, 0.23, 0.13);
+    }
+  }
+  signs.push({ text: "Campus exit", x: leftEdge - 0.02, y: 2.77, z: entranceZ, yaw: -Math.PI / 2, width: 2.45 });
   for (const { side, label, halls } of wings) {
     section = label;
-    const roofZ = side * (courtEdge + hallEdge) / 2;
-    box(beam, (leftEdge + wingEnd) / 2, 3.26, roofZ, wingEnd - leftEdge, 0.18, hallEdge - courtEdge);
-    for (let x = leftEdge + 0.25; x < wingEnd; x += 5.45) {
-      box(plaster, x, 1.59, side * (courtEdge + 0.18), 0.28, 3.18, 0.28, true);
-      if (x + 2 < wingEnd) tubeLight(x + 2, 3.04, roofZ);
-    }
-    signs.push({ text: label, x: -18.2, y: 2.84, z: side * (courtEdge - 0.14), yaw: side === 1 ? 0 : Math.PI, width: 3.05 });
+    signs.push({ text: label, x: -18.2, y: 2.62, z: side * (courtEdge - 0.14), yaw: side === 1 ? 0 : Math.PI, width: 3.05 });
     for (const [index, id] of halls.entries()) {
       const x0 = leftEdge + index * hallWidth;
       classroom(id, x0, index === 2 ? wingEnd : x0 + hallWidth, side);
     }
   }
-  section = "east-walk";
-  box(beam, wingEnd - 1.7, 3.26, 0, 3.4, 0.18, hallEdge * 2);
-  for (const z of [-8, -4, 0, 4, 8]) box(plaster, wingEnd - 3.24, 1.59, z, 0.28, 3.18, 0.28, true);
-
   const graphicsZ = serviceRoom("Graphics Designing Room", -hallEdge, -0.45);
   for (const x of [23.5, 25.37]) {
     for (const z of [graphicsZ - 2.82, graphicsZ + 2.82]) {
@@ -304,8 +330,8 @@ export function buildNalandaInterior(scene: Scene): FurnishedInterior {
   fan(25.2, graphicsZ, 3.35, 0.38);
 
   const washZ = serviceRoom("Washroom", -0.45, hallEdge);
-  for (const side of [-1, 1]) {
-    box(washTile, 24.5, 0.68, washZ + side * 6.122, 8.79, 1.36, 0.044);
+  for (const z of [-0.35, hallEdge - 0.10]) {
+    box(washTile, 24.5, 0.68, z, 8.79, 1.36, 0.044);
   }
   for (const z of [washZ - 3.16, washZ - 1.57, washZ + 0.02]) {
     box(washTile, 27.71, 1.03, z - 0.75, 2.4, 2.06, 0.105, true);
@@ -380,8 +406,12 @@ export function buildNalandaInterior(scene: Scene): FurnishedInterior {
 
   return {
     spawn: [-22.65, 0, entranceZ] as const,
+    spawnYaw: Math.PI / 2,
     extent: [leftEdge - 0.24, -outerEdge, serviceEdge, outerEdge] as const,
     floorAt(x: number, z: number, _currentY: number) {
+      const step = stairs.findIndex((bounds) => inCourt(bounds, x, z));
+      if (step >= 0) return courtStairHeight(stairs[step], x, step === 1, 0);
+      if (inCourt(garden, x, z)) return -nalandaGalleryRise;
       const classroom = classroomAt(x, z);
       if (!classroom || classroom.distance < tierStart) return 0;
       const row = Math.min(tierCount - 1, Math.floor((classroom.distance - tierStart) / tierPitch));
@@ -396,7 +426,7 @@ export function buildNalandaInterior(scene: Scene): FurnishedInterior {
       if (z > courtEdge) return wings[0].label;
       if (z < -courtEdge) return wings[1].label;
       if (x > wingEnd - 3.4) return "Transverse wing";
-      return "Nalanda courtyard";
+      return inCourt(garden, x, z) ? "Nalanda garden" : "Nalanda covered gallery";
     },
     exitNear(x: number, y: number, z: number) {
       return x < leftEdge + 1.8 && y < 0.4 && Math.abs(z - entranceZ) < 1.62;

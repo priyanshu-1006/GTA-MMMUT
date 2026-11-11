@@ -27,7 +27,7 @@ export function createBuildingDoors(scene: Scene, definitions: readonly Building
   const doors = definitions.map((definition) => {
     const { id, point: [x, z], outward, width, height } = definition;
     const root = new TransformNode(`building-entry-${id}`, scene);
-    root.position.set(x, 0.025, z);
+    root.position.set(x, definition.baseY ?? 0.025, z);
     root.rotation.y = Math.atan2(outward[0], outward[1]);
     const doorFinish = finish(`building-door-${id}`, definition.finish);
 
@@ -107,8 +107,8 @@ export function createBuildingDoors(scene: Scene, definitions: readonly Building
       return doors.find(({ definition }) => definition.id === id);
     },
     nearby([x, z]: WorldGroundPoint, y: number) {
-      if (y > 0.6) return null;
-      return doors.find(({ definition: { point, outward, width } }) => {
+      return doors.find(({ definition: { point, outward, width, baseY = 0.025 } }) => {
+        if (y > baseY + 0.575 || y < baseY - 0.63) return false;
         const dx = x - point[0];
         const dz = z - point[1];
         const ahead = dx * outward[0] + dz * outward[1];

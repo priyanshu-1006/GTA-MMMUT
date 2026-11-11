@@ -15,6 +15,7 @@ export type PortalTarget = InteriorId | "exit";
 export function interiorForView(view: string): InteriorId | null {
   if (view === "cse-complex") return "cse";
   if (view === "takshashila") return "takshashila";
+  if (view === "nalanda-courtyard") return "nalanda";
   for (const id of Object.keys(buildingInteriors) as InteriorId[]) {
     if (buildingInteriors[id].view === view) return id;
   }
@@ -25,6 +26,7 @@ export interface BuildingDoorway {
   readonly id: InteriorId;
   readonly point: WorldGroundPoint;
   readonly outward: WorldGroundPoint;
+  readonly baseY?: number;
   readonly width: number;
   readonly height: number;
   readonly finish: string;

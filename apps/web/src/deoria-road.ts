@@ -29,7 +29,7 @@ export function createDeoriaRoad(scene: Scene, asphalt: PBRMaterial, sidewalk: P
 
   const median = material("deoria-median-finish", "#92927a");
   const curb = material("deoria-concrete-curb", "#c0bba8");
-  const paint = material("deoria-white-marking", "#efebd9");
+  const paint = material("deoria-white-marking", "#efefeb");
   const signMetal = material("deoria-sign-posts", "#707878");
 
   function polygon(

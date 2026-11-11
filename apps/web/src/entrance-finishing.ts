@@ -101,7 +101,6 @@ export function createEntranceFinishing(scene: Scene, shadows: ShadowGenerator) 
   const black = finish("kerb-charcoal", "#333536");
   const steel = finish("forecourt-railing", "#b8bebd");
   const roadsideSteel = finish("avenue-green-railings", "#5d7145");
-  const paint = finish("entrance-edge-paint", "#e9e5d6");
   const pavilion = finish("forecourt-pavilion", "#e2dbc5");
   const pot = finish("entrance-planter-rose", "#a14358");
   const soil = finish("entrance-planter-soil", "#493d2b");
@@ -274,9 +273,6 @@ export function createEntranceFinishing(scene: Scene, shadows: ShadowGenerator) 
       sidewalks.push(outline);
       slab(`entrance-sidewalk-${name}-${index}`, outline, pavement, entranceSidewalkHeight, 0.22);
       stripedKerb(offsetPath(section, side * 0.105), 0.025, 0.205);
-      const lineInner = offsetPath(section, -side * 0.2);
-      const lineOuter = offsetPath(section, -side * 0.31);
-      slab(`entrance-edge-line-${name}-${index}`, [...lineInner, ...lineOuter.reverse()], paint, 0.043);
     }
     const opening = annotationToWorld([900, side < 0 ? 746 : 770])[1];
     // Widen the outside railing gap to follow the splayed driveway mouth.

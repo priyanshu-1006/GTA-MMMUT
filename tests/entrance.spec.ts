@@ -399,7 +399,7 @@ test("loads the Alto 800 and Scorpio in TNP parking", async ({ page }, testInfo)
 });
 
 test("opens the marked entrance before crossing into each new interior", async ({ page }, testInfo) => {
-  type EntryHistory = Window & { entryHistory: string[] };
+  type EntryHistory = Window & { entryHistory?: string[] };
   test.setTimeout(210_000);
   await page.setViewportSize({ width: 960, height: 650 });
   await page.addInitScript(() => {
@@ -413,7 +413,8 @@ test("opens the marked entrance before crossing into each new interior", async (
   const building = page.getByRole("combobox", { name: "Building to inspect" });
   const outdoor = page.getByLabel("3D campus entrance preview", { exact: true });
   await outdoor.evaluate((canvas) => {
-    const history = (window as EntryHistory).entryHistory = [];
+    const history: string[] = [];
+    (window as EntryHistory).entryHistory = history;
     new MutationObserver(() => {
       const { buildingEntry, buildingEntryStage, playerAnimation } = canvas.dataset;
       if (!buildingEntry || !buildingEntryStage) return;
@@ -434,11 +435,18 @@ test("opens the marked entrance before crossing into each new interior", async (
       const indoor = page.getByLabel(`3D ${name} interior`, { exact: true });
       await expect(indoor).toHaveAttribute("data-interior-id", id, { timeout: 35_000 });
       await expect(indoor).toHaveAttribute("data-interior-location", /\S/);
-      const history = await page.evaluate(() => (window as EntryHistory).entryHistory);
+      const history = await page.evaluate(() => (window as EntryHistory).entryHistory ?? []);
       const opening = history.indexOf(`${id}/opening/door`);
       expect(opening).toBeGreaterThanOrEqual(0);
       expect(history.indexOf(`${id}/crossing/walk`)).toBeGreaterThan(opening);
       await page.screenshot({ path: testInfo.outputPath(`${id}-arrival.png`) });
+      if (id === "nalanda") {
+        await indoor.focus();
+        expect(await walkTo(indoor, ["KeyW"], "x", -18.8, 1, 18_000)).toBeGreaterThanOrEqual(-18.8);
+        await expect(indoor).toHaveAttribute("data-player-y", "-0.585");
+        expect(await walkTo(indoor, ["KeyS"], "x", -21.7, -1, 18_000)).toBeLessThanOrEqual(-21.7);
+        await expect(indoor).toHaveAttribute("data-player-y", "0.025");
+      }
       await page.getByRole("button", { name: /^Exit to campus\b/ }).click({ timeout: 10_000 });
       await expect(outdoor).toHaveAttribute("data-camera-view", view);
     });
@@ -499,7 +507,10 @@ test("enters CSE, visits both floors and wings, and returns outdoors", async ({ 
 });
 
 test("previews the frontage, campus access roads, and landmarks", async ({ page }, testInfo) => {
-  test.setTimeout(220_000);
+  test.setTimeout(340_000);
+  await page.addInitScript(() => {
+    if (location.protocol === "http:") localStorage.setItem("gta-mmmut.settings.v1", JSON.stringify({ renderQuality: "low" }));
+  });
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("console", (message) => {
@@ -540,6 +551,7 @@ test("previews the frontage, campus access roads, and landmarks", async ({ page 
     ["open-stage", "civil-open-stage.png"],
     ["itrc", "it-resource-center.png"],
     ["cafeteria", "university-cafeteria.png"],
+    ["nalanda-courtyard", "nalanda-courtyard.png"],
     ["takshashila", "takshashila-courtyard.png"],
   ]) {
     await capture("Building to inspect", view, filename);

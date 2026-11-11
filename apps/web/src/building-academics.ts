@@ -13,6 +13,7 @@ import { campusAccess } from "@gta-mmmut/world-data/campus-access";
 import { campusBuildings } from "@gta-mmmut/world-data/campus-buildings";
 import earcut from "earcut";
 import type { BuildingDoorway } from "./building-interiors";
+import { applyMasonryUvs, createMasonryMaterial } from "./masonry-finishes";
 
 type Point = readonly [x: number, z: number];
 type Front = { axis: "x" | "z"; edge: number; outward: 1 | -1 };
@@ -52,11 +53,11 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): r
     return surface;
   }
 
-  const cream = material("academic-cream", "#ddd4be");
-  const light = material("academic-pale-concrete", "#dededa");
-  const libraryWall = material("library-off-white", "#d6d6c7");
-  const oxide = material("academic-oxide-trim", "#8b4e43");
-  const roof = material("academic-roof", "#9f9c91");
+  const cream = createMasonryMaterial(scene, "academic-cream", "#ddd4be");
+  const light = createMasonryMaterial(scene, "academic-pale-concrete", "#dededa", "stone");
+  const libraryWall = createMasonryMaterial(scene, "library-off-white", "#d6d6c7");
+  const oxide = createMasonryMaterial(scene, "academic-oxide-trim", "#8b4e43");
+  const roof = createMasonryMaterial(scene, "academic-roof", "#9f9c91", "stone");
   const dark = material("academic-frames", "#404443");
   const glass = material("academic-warm-glass", "#626d6b", 0.48);
   const blue = material("cse-blue-glass", "#2e4e77", 0.35);
@@ -72,6 +73,7 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): r
       depth: front.axis === "x" ? width : depth,
     }, scene);
     mesh.position.set(x, y, z);
+    applyMasonryUvs(mesh, surface);
     const batch = batches.get(surface) ?? { detail: [], solid: [] };
     batch[collidable ? "solid" : "detail"].push(mesh);
     batches.set(surface, batch);
@@ -86,6 +88,7 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): r
     if (area < 0) polygon.reverse();
     const mesh = new PolygonMeshBuilder(name, polygon, scene, earcut).build(false, top - bottom);
     mesh.position.y = top;
+    applyMasonryUvs(mesh, surface);
     mesh.material = surface;
     mesh.receiveShadows = true;
     mesh.checkCollisions = collidable;
@@ -154,7 +157,7 @@ export function createAcademicFacades(scene: Scene, shadows: ShadowGenerator): r
   const cseHeight = cse.height * 1.29;
   const towerHeight = cseHeight + 2.25;
   // Join the porch to the north access lane.
-  const csePaving = material("cse-entry-concrete", "#ada99d");
+  const csePaving = createMasonryMaterial(scene, "cse-entry-concrete", "#bbb7aa", "concrete");
   const cseApron = [[694, 187.4], [748, 191.04], [748, 204], [694, 204]] as const;
   volume("B22-entry-apron", cseApron.map(annotationToWorld), -0.02, 0.049, csePaving, false);
   entranceVolume(cse.id, cseWalls, cseFront, porchX, 2.48, 2.62, cseHeight, cream);

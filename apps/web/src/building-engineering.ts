@@ -13,10 +13,11 @@ import { annotationToWorld } from "@gta-mmmut/world-data";
 import { campusAccess, itCampusSplitRow } from "@gta-mmmut/world-data/campus-access";
 import { campusBuildings } from "@gta-mmmut/world-data/campus-buildings";
 import earcut from "earcut";
+import { applyMasonryUvs, createMasonryMaterial } from "./masonry-finishes";
 
 type Point = readonly [x: number, z: number];
 type Face = { axis: "x" | "z"; edge: number; direction: -1 | 1 };
-type EngineeringId = "B24" | "B28" | "B29" | "B48" | "B73" | "B74";
+type EngineeringId = "B24" | "B28" | "B29" | "B48" | "B52" | "B73" | "B74";
 
 function footprint(id: EngineeringId) {
   const source = campusBuildings.find((entry) => entry.id === id)!;
@@ -44,14 +45,15 @@ export function createEngineeringFacades(scene: Scene, shadows: ShadowGenerator)
     return surface;
   }
 
-  const cream = material("engineering-cream-plaster", "#e4d6b8");
-  const sandstone = material("civil-sandstone-concrete", "#d0b996");
-  const white = material("IT-white-concrete", "#eeebe3");
+  const cream = createMasonryMaterial(scene, "engineering-cream-plaster", "#e4d6b8");
+  const sandstone = createMasonryMaterial(scene, "civil-sandstone-concrete", "#d0b996", "stone");
+  const white = createMasonryMaterial(scene, "IT-white-concrete", "#eeebe3", "concrete");
   const maroon = material("mechanical-maroon-trim", "#78453f");
+  const plasterJoint = material("mechanical-plaster-joints", "#c3b595");
   const roof = material("engineering-roof", "#aea99b");
   const brick = material("civil-flemish-brick", "#ffffff");
-  const peach = material("IT-peach-plaster", "#ebb195");
-  const entryConcrete = material("engineering-entry-concrete", "#c3bba9");
+  const peach = createMasonryMaterial(scene, "IT-peach-plaster", "#ebb195");
+  const entryConcrete = createMasonryMaterial(scene, "engineering-entry-concrete", "#c3bba9", "concrete");
   const civilPavers = material("civil-entry-pavers", "#ffffff");
   const terracotta = material("IT-terracotta-trim", "#9d5138");
   const frames = material("engineering-window-frame", "#625c52");
@@ -110,6 +112,8 @@ export function createEngineeringFacades(scene: Scene, shadows: ShadowGenerator)
     mesh.position.y = top;
     mesh.material = surface;
     mesh.checkCollisions = collidable;
+    mesh.receiveShadows = true;
+    applyMasonryUvs(mesh, surface);
     if (surface === brick || surface === civilPavers) {
       const positions = mesh.getVerticesData(VertexBuffer.PositionKind)!;
       const normals = mesh.getVerticesData(VertexBuffer.NormalKind)!;
@@ -138,6 +142,7 @@ export function createEngineeringFacades(scene: Scene, shadows: ShadowGenerator)
       depth: face.axis === "x" ? width : depth,
     }, scene);
     mesh.position.set(x, y, z);
+    applyMasonryUvs(mesh, surface);
     if (collidable) {
       mesh.material = surface;
       mesh.checkCollisions = true;
@@ -158,19 +163,22 @@ export function createEngineeringFacades(scene: Scene, shadows: ShadowGenerator)
 
   function sign(id: string, face: Face, u: number, y: number, d: number, w: number, h: number,
     lines: readonly string[], background: string, foreground = "#f3f3ee") {
-    const texture = new DynamicTexture(`${id}-procedural-lettering`, { width: 1024, height: 256 }, scene, true);
+    const width = 1024;
+    const height = Math.round(width * h / w);
+    const padding = height * 0.06;
+    const texture = new DynamicTexture(`${id}-procedural-lettering`, { width, height }, scene, true);
     const context = texture.getContext();
     context.fillStyle = background;
-    context.fillRect(0, 0, 1024, 256);
+    context.fillRect(0, 0, width, height);
     context.fillStyle = foreground;
-    const spacing = 242 / lines.length;
+    const spacing = (height - 2 * padding) / lines.length;
     for (const [index, line] of lines.entries()) {
       const font = "'Nirmala UI', 'Segoe UI', sans-serif";
-      const baseSize = spacing * 0.76;
+      const baseSize = spacing * 0.91;
       context.font = `700 ${baseSize}px ${font}`;
-      const size = Math.floor(baseSize * Math.min(1, 970 / context.measureText(line).width));
+      const size = Math.floor(baseSize * Math.min(1, (width - 54) / context.measureText(line).width));
       context.font = `700 ${size}px ${font}`;
-      context.fillText(line, (1024 - context.measureText(line).width) / 2, 15 + spacing * (index + 0.70));
+      context.fillText(line, (width - context.measureText(line).width) / 2, padding + spacing * (index + 0.76));
     }
     texture.update();
     const surface = material(`${id}-nameplate`, "#ffffff");
@@ -180,6 +188,35 @@ export function createEngineeringFacades(scene: Scene, shadows: ShadowGenerator)
     mesh.position.set(x, y, z);
     mesh.rotation.y = face.axis === "x" ? face.direction * Math.PI / 2 : face.direction === 1 ? 0 : Math.PI;
     mesh.material = surface;
+  }
+
+  function finishMechanicalWalls(outline: readonly Point[], height: number, entryEdge?: number) {
+    for (const [index, [x, z]] of outline.entries()) {
+      const [endX, endZ] = outline[(index + 1) % outline.length];
+      if (x !== endX && z !== endZ) continue;
+      if (z === entryEdge && z === endZ) continue;
+      const face: Face = x === endX
+        ? { axis: "x", edge: x, direction: endZ > z ? 1 : -1 }
+        : { axis: "z", edge: z, direction: endX > x ? -1 : 1 };
+      const start = face.axis === "x" ? Math.min(z, endZ) : Math.min(x, endX);
+      const length = face.axis === "x" ? Math.abs(endZ - z) : Math.abs(endX - x);
+      const midpoint = start + length / 2;
+      box(face, maroon, midpoint, height + 0.03, 0.035, length, 0.16, 0.18);
+      box(face, entryConcrete, midpoint, 0.16, 0.039, length, 0.32, 0.11);
+      for (const y of [0.91, 3.15, height - 0.52]) {
+        box(face, plasterJoint, midpoint, y, 0.008, length, 0.038, 0.021);
+      }
+      if (length < 3.5) continue;
+      const bays = Math.max(1, Math.round(length / 4.7));
+      for (let bay = 0; bay < bays; bay++) {
+        const along = start + (bay + 0.5) * length / bays;
+        for (const y of [1.94, height - 1.87]) {
+          window(face, along, y, 1.73, 1.34);
+          box(face, maroon, along, y + 0.78, 0.138, 2.14, 0.11, 0.23);
+          box(face, entryConcrete, along, y - 0.73, 0.114, 1.92, 0.085, 0.21);
+        }
+      }
+    }
   }
 
   // Mechanical: the north face of the B48 wing is a provisional photo assignment.
@@ -207,11 +244,17 @@ export function createEngineeringFacades(scene: Scene, shadows: ShadowGenerator)
   }
   volume("B48", mechBody, 0, mechHeight, cream);
   volume("B48-roof", mechanical.outline, mechHeight, mechHeight + 0.13, roof, false);
+  finishMechanicalWalls(mechanical.outline, mechHeight, mechanical.north);
   volume("B48-tall-window-block", rectangle(mechRight, mechanical.north, mechEast, mechanical.north + 5.65),
     mechHeight, mechTall, cream);
+  box({ axis: "x", edge: mechEast, direction: 1 }, maroon, mechanical.north + 2.825,
+    mechTall, 0.03, 5.65, 0.16, 0.20);
   const tallWidth = mechEast - mechRight;
   box(mechFront, maroon, (mechRight + mechEast) / 2, mechTall, 0, tallWidth, 0.16, 0.25);
   box(mechFront, maroon, (mechWest + mechLeft) / 2, mechHeight, 0, mechLeft - mechWest, 0.16, 0.24);
+  for (const y of [1.1, 2.3, 3.53, 4.75, 5.96, 7.18, 8.38]) {
+    box(mechFront, plasterJoint, (mechRight + mechEast) / 2, y, 0.008, tallWidth, 0.038, 0.021);
+  }
   for (const x of [mechRight + tallWidth * 0.27, mechRight + tallWidth * 0.72]) {
     box(mechFront, frames, x, 4.25, 0.034, 1.91, 5.68, 0.074);
     for (let pane = 0; pane < 6; pane++) {
@@ -235,15 +278,33 @@ export function createEngineeringFacades(scene: Scene, shadows: ShadowGenerator)
   }
 
   // The TNP-facing approach identifies the south wing of the Mechanical complex.
+  const rearWorkshops = footprint("B52");
+  const rearHeight = 6.45;
+  volume("B52", rearWorkshops.outline, 0, rearHeight, cream);
+  volume("B52-roof", rearWorkshops.outline, rearHeight, rearHeight + 0.15, roof, false);
+  finishMechanicalWalls(rearWorkshops.outline, rearHeight);
   const southWing = campusAccess.mechanicalEntrance.outline.map(annotationToWorld);
   const [southEntry, southFaceZ] = annotationToWorld(campusAccess.mechanicalEntrance.position);
   const southFront: Face = { axis: "z", edge: southFaceZ, direction: 1 };
   const southHeight = 6.45;
   const southWidth = 10.5;
-  volume("mechanical-south-wing", southWing, 0, southHeight, cream);
+  const southDoorHalf = 1.55;
+  const southRecess = 1.65;
+  const southDoorLeft = southEntry - southDoorHalf;
+  const southDoorRight = southEntry + southDoorHalf;
+  const southBody = southWing.flatMap((point, index): readonly Point[] => {
+    const next = southWing[(index + 1) % southWing.length];
+    if (point[1] !== southFaceZ || next[1] !== southFaceZ) return [point];
+    return [point, [southDoorRight, southFaceZ], [southDoorRight, southFaceZ - southRecess],
+      [southDoorLeft, southFaceZ - southRecess], [southDoorLeft, southFaceZ]];
+  });
+  volume("mechanical-south-wing", southBody, 0, southHeight, cream);
+  volume("mechanical-south-door-header", rectangle(southDoorLeft, southFaceZ - southRecess, southDoorRight, southFaceZ),
+    2.92, southHeight, cream);
   volume("mechanical-south-roof", southWing, southHeight, southHeight + 0.15, roof, false);
+  finishMechanicalWalls(southWing, southHeight, southFaceZ);
   volume("mechanical-south-connector", campusAccess.mechanicalEntrance.link.map(annotationToWorld), 2.96, 3.33, cream);
-  volume("mechanical-south-threshold", rectangle(southEntry - 4.7, southFaceZ, southEntry + 4.7, southFaceZ + 3.52),
+  volume("mechanical-south-threshold", rectangle(southEntry - 4.7, southFaceZ - southRecess, southEntry + 4.7, southFaceZ + 3.52),
     -0.02, 0.052, entryConcrete, false);
   const towerCenter = southEntry - 9.8;
   volume("mechanical-south-tower", rectangle(towerCenter - 3.55, southFaceZ - 4.2, towerCenter + 3.55, southFaceZ),
@@ -256,7 +317,8 @@ export function createEngineeringFacades(scene: Scene, shadows: ShadowGenerator)
         0.095, 1.58, 0.86, 0.05);
     }
   }
-  box(southFront, entrance, southEntry, 1.39, 0.09, 3.1, 2.77, 0.12);
+  box(southFront, entrance, southEntry, 1.39, -southRecess + 0.09, 3.1, 2.77, 0.12);
+  box(southFront, frames, southEntry, 1.39, -southRecess + 0.17, 0.07, 2.77, 0.055);
   box(southFront, cream, southEntry, 3.53, 1.1, southWidth, 0.32, 2.54, true);
   box(southFront, maroon, southEntry, 3.79, 1.18, southWidth + 0.12, 0.15, 2.61);
   for (const sign of [-1, 1]) {
@@ -268,7 +330,16 @@ export function createEngineeringFacades(scene: Scene, shadows: ShadowGenerator)
     const height = 0.105 * (step + 1);
     box(southFront, maroon, southEntry, height / 2, depth / 2, 5.9, height, depth);
   }
-  for (const y of [1.74, 4.92]) window(southFront, southEntry + 10.3, y, 2.28, 1.48);
+  const [southWest, southEast] = [southWing[4][0], southWing[3][0]];
+  for (const [start, end] of [[southWest, towerCenter - 3.55], [towerCenter + 3.55, southEast]]) {
+    box(southFront, maroon, (start + end) / 2, southHeight + 0.03, 0.036, end - start, 0.16, 0.19);
+  }
+  for (const x of [southEntry + 5.7, southEntry + 12.8]) {
+    for (const y of [1.74, 4.92]) {
+      window(southFront, x, y, 2.10, 1.48);
+      box(southFront, maroon, x, y + 0.84, 0.15, 2.53, 0.115, 0.26);
+    }
+  }
 
   // Civil Block 1: the B74 southern roof projection defines the open tower.
   const civil = footprint("B74");

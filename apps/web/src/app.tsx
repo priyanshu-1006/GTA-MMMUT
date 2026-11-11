@@ -224,8 +224,11 @@ const cameraLabels: Record<EntranceView, string> = {
   "takshashila-entry": "TAKSHASHILA ENTRANCE",
   pushpagiri: "PUSHPAGIRI ENTRANCE",
   ece: "ELECTRONICS & COMMUNICATION ENGINEERING",
+  "ece-roadside": "ECE ROADSIDE",
   electrical: "ELECTRICAL ENGINEERING",
+  "electrical-roadside": "ELECTRICAL ENGINEERING ROADSIDE",
   nalanda: "NALANDA LECTURE HALL COMPLEX",
+  "nalanda-courtyard": "NALANDA COURTYARD",
   gate: "MAIN GATE",
   "old-gate": "OLD GATE",
   deoria: "DEORIA ROAD",
@@ -255,11 +258,14 @@ const buildingViews = [
   { view: "itrc", label: "I.T. Resource Center (B24 south)" },
   { view: "cafeteria", label: "B21 University Cafeteria" },
   { view: "nalanda", label: "B33–B35 Nalanda Lecture Hall Complex" },
+  { view: "nalanda-courtyard", label: "B33–B35 Nalanda courtyard" },
   { view: "pushpagiri", label: "B45 Pushpagiri entrance" },
   { view: "takshashila-entry", label: "B47 Takshashila entrance" },
   { view: "takshashila", label: "B47 Takshashila courtyard" },
-  { view: "ece", label: "B46 Electronics & Communication Engineering" },
-  { view: "electrical", label: "B32 Electrical Engineering" },
+  { view: "ece", label: "B46 Electronics & Communication Engineering entrance" },
+  { view: "ece-roadside", label: "B46 ECE roadside" },
+  { view: "electrical", label: "B32 Electrical Engineering entrance" },
+  { view: "electrical-roadside", label: "B32 Electrical Engineering roadside" },
 ] as const;
 
 const entranceDetails = [

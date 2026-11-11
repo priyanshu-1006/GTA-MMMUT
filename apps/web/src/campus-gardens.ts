@@ -1,3 +1,4 @@
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import type { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
@@ -15,7 +16,7 @@ import { annotationToWorld, type AnnotationPoint } from "@gta-mmmut/world-data";
 import { campusGardens, type AnnotationRect } from "@gta-mmmut/world-data/campus-gardens";
 import earcut from "earcut";
 
-export function createCampusGardens(scene: Scene, shadows: ShadowGenerator): void {
+export function createCampusGardens(scene: Scene, shadows: ShadowGenerator, asphalt: PBRMaterial): void {
   const batches = new Map<PBRMaterial, Mesh[]>();
   function finish(name: string, color: string) {
     const material = new PBRMaterial(name, scene);
@@ -38,8 +39,8 @@ export function createCampusGardens(scene: Scene, shadows: ShadowGenerator): voi
     finish("garden-coral-flowers", "#bf6551"),
     finish("garden-rose-flowers", "#a44d69"),
   ];
-  const pavement = finish("B72-parking-pavement", "#585a58");
-  const paint = finish("B72-parking-markings", "#e7e3d1");
+  const signMetal = finish("B72-parking-sign-metal", "#585a58");
+  const paint = finish("B72-parking-markings", "#efefeb");
   paint.zOffset = -1;
 
   function add(surface: PBRMaterial, mesh: Mesh) {
@@ -129,11 +130,20 @@ export function createCampusGardens(scene: Scene, shadows: ShadowGenerator): voi
   }
 
   const { lot, driveway, entranceWalk, stalls } = placementParking;
-  rect(pavement, lot, 0.026);
-  const drivewayPolygon = driveway.map(annotationToWorld).map(([x, z]) => new Vector2(x, z));
-  const drivewayMesh = new PolygonMeshBuilder("B72-parking-driveway", drivewayPolygon, scene, earcut).build(false);
-  drivewayMesh.position.y = 0.026;
-  add(pavement, drivewayMesh);
+  const [left, top, right, bottom] = lot;
+  const lotOutline = [[left, top], [right, top], [right, bottom], [left, bottom]] as const;
+  for (const [name, outline] of [["lot", lotOutline], ["driveway", driveway]] as const) {
+    const points = outline.map(annotationToWorld).map(([x, z]) => new Vector2(x, z));
+    const mesh = new PolygonMeshBuilder(`B72-parking-${name}`, points, scene, earcut).build(false);
+    const positions = mesh.getVerticesData(VertexBuffer.PositionKind)!;
+    const uv = [];
+    for (let index = 0; index < positions.length; index += 3) uv.push(positions[index] / 5, positions[index + 2] / 5);
+    mesh.setVerticesData(VertexBuffer.UVKind, uv);
+    mesh.position.y = 0.026;
+    mesh.material = asphalt;
+    mesh.receiveShadows = true;
+    mesh.isPickable = false;
+  }
   rect(paths, entranceWalk, 0.034);
   const line = 0.22;
   const lastX = stalls.left + stalls.width * stalls.count;
@@ -146,7 +156,7 @@ export function createCampusGardens(scene: Scene, shadows: ShadowGenerator): voi
   const [signX, signZ] = annotationToWorld([1066, 637]);
   const signPost = CreateCylinder("parking-sign-post", { height: 1.9, diameter: 0.072, tessellation: 8 }, scene);
   signPost.position.set(signX, 0.95, signZ);
-  add(pavement, signPost);
+  add(signMetal, signPost);
   const signTexture = new DynamicTexture("parking-sign-face", { width: 128, height: 128 }, scene, true);
   signTexture.drawText("P", null, 83, "bold 83px sans-serif", "#f8f5eb", "#315d80");
   signTexture.drawText("PARKING", null, 112, "bold 18px sans-serif", "#f8f5eb", null);

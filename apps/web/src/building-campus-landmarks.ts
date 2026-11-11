@@ -15,6 +15,10 @@ import { itCampusSplitRow } from "@gta-mmmut/world-data/campus-access";
 import { campusBuildings } from "@gta-mmmut/world-data/campus-buildings";
 import earcut from "earcut";
 import { academicFrontages, lectureEntranceWidth } from "./academic-frontages";
+import { applyMasonryUvs, createMasonryMaterial } from "./masonry-finishes";
+import { courtGalleries, insetCourt, nalandaCampusDeckY, nalandaCampusFloor, nalandaCampusGarden,
+  nalandaCampusGardenY, nalandaCampusGalleries, nalandaCampusStairs, nalandaEntranceRamp,
+  nalandaGalleryHeadroom, nalandaGalleryRise, takshashilaGalleryWidth } from "./lecture-courtyards";
 
 type Point = readonly [x: number, z: number];
 type Rect = readonly [west: number, north: number, east: number, south: number];
@@ -47,8 +51,8 @@ function clip(outline: readonly Point[], [west, north, east, south]: Rect): Poin
 
 export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): void {
   const batches = new Map<PBRMaterial, Mesh[]>();
-  function material(name: string, color: string, roughness = 0.92) {
-    const finish = new PBRMaterial(name, scene);
+  function material(name: string, color: string, roughness = 0.92, masonry?: "plaster" | "concrete" | "stone") {
+    const finish = masonry ? createMasonryMaterial(scene, name, color, masonry) : new PBRMaterial(name, scene);
     finish.albedoColor = Color3.FromHexString(color).toLinearSpace();
     finish.roughness = roughness;
     finish.metallic = 0;
@@ -56,22 +60,29 @@ export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): v
     return finish;
   }
 
-  const cream = material("landmark-pale-plaster", "#e3ded2");
+  const cream = material("landmark-pale-plaster", "#e3ded2", 0.92, "plaster");
   const glass = material("landmark-glazing", "#3b4a4e", 0.41);
   const frame = material("landmark-window-frame", "#b0aa9a");
   const steps = material("landmark-dark-steps", "#3b3834");
-  const paving = material("landmark-entry-paving", "#b5aa91");
+  const paving = material("landmark-entry-paving", "#b5aa91", 0.93, "stone");
   const orange = material("cafeteria-orange-trim", "#c47743");
   const tile = material("cafeteria-terracotta-hip-roofs", "#a26556");
   const ridge = material("cafeteria-roof-crest", "#74493d");
   const benchRed = material("cafeteria-painted-seat-base", "#a34743");
   const benchGold = material("cafeteria-painted-seat-top", "#d3ac56");
-  const resourceCream = material("itrc-cream-plaster", "#e4d8cf");
-  const resourceRed = material("itrc-maroon-bands", "#81463f");
+  const resourceCream = material("itrc-cream-plaster", "#e4d8cf", 0.92, "plaster");
+  const resourceRed = material("itrc-maroon-bands", "#81463f", 0.92, "plaster");
   const resourceGlazing = material("itrc-window-glazing", "#59696b", 0.5);
-  const blueRoof = material("lecture-hall-blue-roof", "#597891");
-  const lectureBand = material("lecture-hall-stone-bands", "#b8b09e");
-  const courtGrass = material("lecture-hall-courtyard", "#74894d");
+  const blueRoof = material("lecture-hall-blue-roof", "#597891", 0.91, "plaster");
+  const lectureBand = material("lecture-hall-stone-bands", "#b8b09e", 0.92, "stone");
+  const galleryRoof = material("lecture-gallery-flat-roof", "#d5c9ae", 0.91, "plaster");
+  const galleryPaving = material("lecture-gallery-pavement", "#a49e90", 0.93, "stone");
+  const courtGrass = material("nalanda-courtyard-lawn", "#7e985d");
+  const shrub = [material("nalanda-garden-hedge", "#4f7042"), material("nalanda-garden-foliage", "#5c804c")];
+  const flowers = [material("nalanda-garden-marigolds", "#ca9a41"), material("nalanda-garden-roses", "#a9504c")];
+  const iron = material("lecture-gallery-ironwork", "#384445");
+  const galleryPaint = [material("gallery-ochre-post", "#ad8550"), material("gallery-green-post", "#598276"),
+    material("gallery-red-post", "#a45649")];
   tile.backFaceCulling = false;
   const roofTexture = new DynamicTexture("cafeteria-procedural-ribbed-roof", { width: 256, height: 64 }, scene, true);
   const roofContext = roofTexture.getContext();
@@ -98,6 +109,7 @@ export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): v
     width: number, height: number, depth: number, name?: string) {
     const mesh = CreateBox(name ?? surface.name, { width, height, depth }, scene);
     mesh.position.set(x, y, z);
+    applyMasonryUvs(mesh, surface);
     if (name) solid(mesh, surface);
     else batches.get(surface)!.push(mesh);
   }
@@ -113,6 +125,7 @@ export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): v
     const polygon = outline.map(([x, z]) => new Vector2(x, z));
     const mesh = new PolygonMeshBuilder(name, polygon, scene, earcut).build(false, top - bottom);
     mesh.position.y = top;
+    applyMasonryUvs(mesh, surface);
     if (collides) solid(mesh, surface);
     else batches.get(surface)!.push(mesh);
   }
@@ -289,41 +302,127 @@ export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): v
   rectangle(paving, [resourceWest - 3.05, resourceEntryZ - 1.65, resourceWest - 1.43, resourceEntryZ + 1.65],
     0, 0.038);
 
+  const pushpagiri = campusBuildings.find(({ id }) => id === "B45")!;
+  const pushpagiriRoof = pushpagiri.footprint.map(annotationToWorld);
+  const pushpagiriRoofY = pushpagiri.height + 0.15;
+  volume("B45-full-roof-slab", pushpagiriRoof, pushpagiriRoofY, pushpagiriRoofY + 0.22, blueRoof, false);
+  for (const [index, [x, z]] of pushpagiriRoof.entries()) {
+    const [endX, endZ] = pushpagiriRoof[(index + 1) % pushpagiriRoof.length];
+    const length = Math.hypot(endX - x, endZ - z);
+    const parapet = CreateBox("B45-roof-parapet", { width: length + 0.18, height: 0.64, depth: 0.2 }, scene);
+    parapet.position.set((x + endX) / 2, pushpagiriRoofY + 0.54, (z + endZ) / 2);
+    parapet.rotation.y = -Math.atan2(endZ - z, endX - x);
+    applyMasonryUvs(parapet, cream);
+    batches.get(cream)!.push(parapet);
+  }
+
+  rectangle(courtGrass, nalandaCampusGarden, -0.03, nalandaCampusGardenY);
+  const nalandaSoffit = nalandaCampusDeckY + nalandaGalleryHeadroom;
+  for (const [index, gallery] of nalandaCampusGalleries.entries()) {
+    rectangle(galleryPaving, gallery, nalandaCampusGardenY, nalandaCampusDeckY);
+    rectangle(galleryRoof, gallery, nalandaSoffit, nalandaSoffit + 0.18, `B33-Nalanda-gallery-shed-${index}`);
+  }
+  const [gardenLeft, gardenRear, gardenRight, gardenFront] = nalandaCampusGarden;
+  function nalandaPost(x: number, z: number, index: number) {
+    box(cream, x, nalandaCampusDeckY + nalandaGalleryHeadroom / 2, z,
+      0.28, nalandaGalleryHeadroom, 0.28, "B33-Nalanda-gallery-post");
+    box(galleryPaint[index % galleryPaint.length], x, nalandaCampusDeckY + 1.27, z, 0.291, 1.34, 0.291);
+  }
+  for (const [side, z] of [gardenRear - 0.16, gardenFront + 0.16].entries()) {
+    for (let x = gardenLeft, bay = 0; x <= gardenRight + 0.1; x += 3.8, bay++) nalandaPost(x, z, side + bay);
+  }
+  for (const [side, x] of [gardenLeft - 0.16, gardenRight + 0.16].entries()) {
+    for (let z = gardenRear + 1.62, bay = 0; z < gardenFront; z += 3.8, bay++) {
+      if (Math.abs(z - (gardenRear + gardenFront) / 2) > 1.55) nalandaPost(x, z, side + bay);
+    }
+  }
+  for (const [side, [left, rear, right, front]] of nalandaCampusStairs.entries()) {
+    for (let step = 0; step < 3; step++) {
+      const x = side ? right - (step + 0.5) * 0.45 : left + (step + 0.5) * 0.45;
+      const height = nalandaGalleryRise * (3 - step) / 3;
+      box(galleryPaving, x, nalandaCampusGardenY + height / 2, (rear + front) / 2, 0.45, height, front - rear);
+    }
+  }
+  for (const [row, z] of [gardenRear + 1.25, gardenFront - 1.25].entries()) {
+    for (let x = gardenLeft + 1.3, index = 0; x < gardenRight - 0.9; x += 1.15, index++) {
+      box(shrub[index % 2], x, nalandaCampusGardenY + 0.20, z, 1.19, 0.4, 0.66);
+      if (index % 2 === 0) box(flowers[(row + index / 2) % 2], x, nalandaCampusGardenY + 0.42, z, 0.23, 0.10, 0.23);
+    }
+  }
+  const [rampLeft, rampRear, rampRight, rampFront] = nalandaEntranceRamp;
+  const rampZ = (rampRear + rampFront) / 2;
+  const landingX = rampRight - 0.9;
+  const rampRun = landingX - rampLeft;
+  const ramp = CreateBox("B33-Nalanda-entrance-ramp", {
+    width: Math.hypot(rampRun, nalandaGalleryRise), height: 0.12, depth: rampFront - rampRear,
+  }, scene);
+  ramp.position.set((rampLeft + landingX) / 2, nalandaCampusFloor((rampLeft + landingX) / 2, rampZ)! - 0.06, rampZ);
+  ramp.rotation.z = Math.atan2(nalandaGalleryRise, rampRun);
+  applyMasonryUvs(ramp, galleryPaving);
+  batches.get(galleryPaving)!.push(ramp);
+  rectangle(galleryPaving, [landingX, rampRear, rampRight, rampFront], nalandaCampusGardenY, nalandaCampusDeckY);
+
   const hall = campusBuildings.find(({ id }) => id === "B47")!;
   const hallOutline = hall.footprint.map(annotationToWorld);
   const [hallWest, hallNorth, hallEast, hallSouth] = bounds(hallOutline);
   const [courtWest, courtNorth, courtEast, courtSouth] = bounds(hall.holes[0].map(annotationToWorld));
+  const openCourt: Rect = [courtWest, courtNorth, courtEast, courtSouth];
+  const galleryWidth = takshashilaGalleryWidth * 0.7;
+  const galleryBounds = insetCourt(openCourt, -galleryWidth);
+  const [galleryWest, galleryNorth, galleryEast, gallerySouth] = galleryBounds;
   const hallX = (courtWest + courtEast) / 2;
   const hallHeight = hall.height;
   const portalHalfWidth = 2.75;
   const [northEntryX] = academicFrontages.takshashila.door;
   const northLeft = northEntryX - lectureEntranceWidth / 2;
   const northRight = northEntryX + lectureEntranceWidth / 2;
-  const northWing = clip(hallOutline, [hallWest, hallNorth, hallEast, courtNorth]);
-  const westWing = clip(hallOutline, [hallWest, courtNorth, courtWest, courtSouth]);
-  const eastWing = clip(hallOutline, [courtEast, courtNorth, hallEast, courtSouth]);
-  const southWing = clip(hallOutline, [hallWest, courtSouth, hallEast, hallSouth]);
+  const northWing = clip(hallOutline, [hallWest, hallNorth, hallEast, galleryNorth]);
+  const westWing = clip(hallOutline, [hallWest, galleryNorth, galleryWest, gallerySouth]);
+  const eastWing = clip(hallOutline, [galleryEast, galleryNorth, hallEast, gallerySouth]);
+  const southWing = clip(hallOutline, [hallWest, gallerySouth, hallEast, hallSouth]);
   for (const [name, wing] of [["west", westWing], ["east", eastWing]] as const) {
     volume(`B47-${name}-wing`, wing, 0, hallHeight, cream);
     volume(`B47-${name}-roof`, wing, hallHeight, hallHeight + 0.16, blueRoof, false);
   }
-  volume("B47-north-wing-west", clip(northWing, [hallWest, hallNorth, northLeft, courtNorth]), 0, hallHeight, cream);
-  volume("B47-north-wing-east", clip(northWing, [northRight, hallNorth, hallEast, courtNorth]), 0, hallHeight, cream);
-  volume("B47-north-wing-portal", clip(northWing, [northLeft, hallNorth, northRight, courtNorth]),
+  volume("B47-north-wing-west", clip(northWing, [hallWest, hallNorth, northLeft, galleryNorth]), 0, hallHeight, cream);
+  volume("B47-north-wing-east", clip(northWing, [northRight, hallNorth, hallEast, galleryNorth]), 0, hallHeight, cream);
+  volume("B47-north-wing-portal", clip(northWing, [northLeft, hallNorth, northRight, galleryNorth]),
     3.02, hallHeight, cream);
   volume("B47-north-roof", northWing, hallHeight, hallHeight + 0.16, blueRoof, false);
   rectangle(paving, [northLeft, hallNorth, northRight, courtNorth + 1.35], 0, 0.043);
 
   // Illustrative walk-through in the otherwise continuous southern wing.
-  volume("B47-south-wing-west", clip(southWing, [hallWest, courtSouth, hallX - portalHalfWidth, hallSouth]),
+  volume("B47-south-wing-west", clip(southWing, [hallWest, gallerySouth, hallX - portalHalfWidth, hallSouth]),
     0, hallHeight, cream);
-  volume("B47-south-wing-east", clip(southWing, [hallX + portalHalfWidth, courtSouth, hallEast, hallSouth]),
+  volume("B47-south-wing-east", clip(southWing, [hallX + portalHalfWidth, gallerySouth, hallEast, hallSouth]),
     0, hallHeight, cream);
-  volume("B47-south-wing-portal", clip(southWing, [hallX - portalHalfWidth, courtSouth, hallX + portalHalfWidth, hallSouth]),
+  volume("B47-south-wing-portal", clip(southWing, [hallX - portalHalfWidth, gallerySouth, hallX + portalHalfWidth, hallSouth]),
     3.1, hallHeight, cream);
   volume("B47-south-roof", southWing, hallHeight, hallHeight + 0.16, blueRoof, false);
-  rectangle(courtGrass, [courtWest, courtNorth, courtEast, courtSouth], 0, 0.034);
-  rectangle(paving, [hallX - 1.9, courtNorth, hallX + 1.9, hallSouth + 2.1], 0, 0.048);
+  const upperWalk = 3.72;
+  rectangle(paving, galleryBounds, 0, 0.037);
+  rectangle(paving, [hallX - 1.9, gallerySouth, hallX + 1.9, hallSouth + 2.1], 0, 0.048);
+  for (const gallery of courtGalleries(galleryBounds, openCourt)) {
+    rectangle(galleryPaving, gallery, 0.037, 0.049);
+    rectangle(cream, gallery, upperWalk - 0.20, upperWalk);
+    rectangle(galleryRoof, gallery, hallHeight - 0.04, hallHeight + 0.16);
+  }
+  for (const z of [openCourt[1], openCourt[3]]) {
+    box(iron, hallX, upperWalk + 0.99, z, openCourt[2] - openCourt[0], 0.078, 0.082);
+    for (let x = openCourt[0]; x <= openCourt[2] + 0.1; x += 0.26) {
+      box(iron, x, upperWalk + 0.50, z, 0.031, 0.96, 0.031);
+    }
+    for (let x = openCourt[0] + 0.28; x < openCourt[2]; x += 4.4) {
+      box(cream, x, upperWalk / 2, z, 0.24, upperWalk, 0.24, "B47-court-post");
+      box(cream, x, (hallHeight + upperWalk) / 2, z, 0.24, hallHeight - upperWalk, 0.24);
+    }
+  }
+  for (const x of [openCourt[0], openCourt[2]]) {
+    box(iron, x, upperWalk + 0.99, (courtNorth + courtSouth) / 2, 0.082, 0.078, openCourt[3] - openCourt[1]);
+    for (let z = openCourt[1] + 0.25; z < openCourt[3]; z += 0.26) {
+      box(iron, x, upperWalk + 0.50, z, 0.031, 0.96, 0.031);
+    }
+  }
   for (const x of [hallX - portalHalfWidth, hallX + portalHalfWidth]) {
     box(lectureBand, x, 1.65, hallSouth + 0.066, 0.28, 3.3, 0.19);
   }
@@ -331,13 +430,15 @@ export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): v
   for (const y of [1.82, 5.26]) {
     for (let bay = 0; bay < 9; bay++) {
       const x = courtWest + (courtEast - courtWest) * (bay + 0.5) / 9;
-      southWindow(x, y, courtNorth, 2.04, 1.31);
+      if (y > 3 || Math.abs(x - northEntryX) > lectureEntranceWidth / 2 + 1.1) {
+        southWindow(x, y, galleryNorth, 2.04, 1.31);
+      }
       if (y > 3 || Math.abs(x - hallX) > portalHalfWidth + 1.12) {
-        box(frame, x, y, courtSouth - 0.045, 2.16, 1.43, 0.10);
-        box(glass, x, y, courtSouth - 0.104, 2.04, 1.31, 0.05);
+        box(frame, x, y, gallerySouth - 0.045, 2.16, 1.43, 0.10);
+        box(glass, x, y, gallerySouth - 0.104, 2.04, 1.31, 0.05);
       }
     }
-    for (const [x, side] of [[courtWest, 1], [courtEast, -1]] as const) {
+    for (const [x, side] of [[galleryWest, 1], [galleryEast, -1]] as const) {
       for (let bay = 0; bay < 4; bay++) {
         const z = courtNorth + (courtSouth - courtNorth) * (bay + 0.5) / 4;
         box(frame, x + side * 0.043, y, z, 0.10, 1.43, 2.15);
@@ -356,6 +457,6 @@ export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): v
     mesh.material = surface;
     mesh.receiveShadows = true;
     mesh.isPickable = false;
-    if (surface === tile || surface === blueRoof) shadows.addShadowCaster(mesh);
+    if (surface === tile || surface === blueRoof || surface === galleryRoof) shadows.addShadowCaster(mesh);
   }
 }

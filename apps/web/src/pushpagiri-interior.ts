@@ -83,6 +83,7 @@ export function buildPushpagiriInterior(scene: Scene): FurnishedInterior {
   const railCap = material("railing-handles", "#6f5043");
   const light = material("corridor-fixtures", "#fff0d8", true);
   const ceiling = material("ceiling-soffit", "#ddd5c8", true);
+  const roof = material("reinforced-concrete-roof", "#c6bcae");
   const gateTile = patterned("courtyard-paving", "#b4a28c", "#8f8174");
   const corridorTile = patterned("gallery-terrazzo", "#d8ccbb", "#aba08f");
   const roomTile = patterned("classroom-floor", "#c6c3b9", "#a49f93");
@@ -98,8 +99,8 @@ export function buildPushpagiriInterior(scene: Scene): FurnishedInterior {
 
   for (const bounds of galleries) deck(bounds, upperY);
 
-  // The rear terrace is the open span above L-119. The front gallery wraps the
-  // rectangular void over the entrance court and leaves its center open to the sky.
+  // The rear gallery spans L-119. The front gallery wraps the void over the
+  // entrance court beneath a continuous roof.
   railing(rail, railCap, [rearTerrace[0], upperY, rearZ], [rearTerrace[2], upperY, rearZ]);
   railing(rail, railCap, [-voidHalf, upperY, frontDoorZ], [voidHalf, upperY, frontDoorZ]);
   railing(rail, railCap, [-voidHalf, upperY, voidFront], [voidHalf, upperY, voidFront]);
@@ -161,6 +162,20 @@ export function buildPushpagiriInterior(scene: Scene): FurnishedInterior {
 
   for (const x of [-30, -23, -16, -9, 0, 9, 16, 23, 30]) {
     box(light, [x, upperY - 0.235, (frontDoorZ + rearDoorZ) / 2], [1.46, 0.045, 0.25]);
+  }
+  const roofBase = upperY + wallHeight + 0.16;
+  const roofWidth = extent[2] - extent[0] + 0.5;
+  const roofDepth = frontZ - rearZ + 0.5;
+  const roofCenterZ = (rearZ + frontZ) / 2;
+  box(roof, [0, roofBase + 0.14, roofCenterZ], [roofWidth, 0.28, roofDepth], true);
+  for (const x of [-32.5, -11, 11, 32.5]) {
+    box(ceiling, [x, roofBase - 0.145, roofCenterZ], [0.26, 0.29, roofDepth - 0.4]);
+  }
+  for (const z of [rearDoorZ - 1.2, (rearDoorZ + frontDoorZ) / 2, frontZ - 0.95]) {
+    box(ceiling, [0, roofBase - 0.13, z], [roofWidth - 0.4, 0.26, 0.32]);
+    for (const x of [-27, -18, -8, 0, 8, 18, 27]) {
+      box(light, [x, roofBase - 0.28, z], [1.52, 0.035, 0.16]);
+    }
   }
   finish();
 
@@ -245,7 +260,7 @@ export function buildPushpagiriInterior(scene: Scene): FurnishedInterior {
     location(x, y, z) {
       const level = y >= upperY - 0.24 ? 1 : 0;
       const current = roomAt(x, z, level)?.room;
-      const section = level ? contains(rearTerrace, x, z) ? "Open Terrace" : "First-floor Gallery"
+      const section = level ? contains(rearTerrace, x, z) ? "Rear Gallery" : "First-floor Gallery"
         : y > 0.2 && stairY(x, z) !== undefined ? "Staircase" : z >= frontDoorZ && Math.abs(x) < flankInner ? "Entrance Court" : "Ground-floor Corridor";
       return { section, floor: level, room: current?.label, roomId: current?.label.toLowerCase() };
     },

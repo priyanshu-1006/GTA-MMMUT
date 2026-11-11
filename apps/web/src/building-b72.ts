@@ -8,6 +8,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
 import { annotationToWorld } from "@gta-mmmut/world-data";
 import { adminCoreBuildings } from "@gta-mmmut/world-data/admin-core";
+import { applyMasonryUvs, createMasonryMaterial } from "./masonry-finishes";
 
 export function createB72Facade(scene: Scene, shadows: ShadowGenerator): void {
   const building = adminCoreBuildings.find(({ id }) => id === "B72");
@@ -32,9 +33,9 @@ export function createB72Facade(scene: Scene, shadows: ShadowGenerator): void {
     return result;
   }
 
-  const plaster = material("ivory-plaster", "#e4e1d6");
-  const reveal = material("concrete-reveal", "#a9a598");
-  const fin = material("oxide-fin", "#5c4541");
+  const plaster = createMasonryMaterial(scene, "B72-ivory-plaster", "#e4e1d6");
+  const reveal = createMasonryMaterial(scene, "B72-concrete-reveal", "#a9a598", "stone");
+  const fin = createMasonryMaterial(scene, "B72-oxide-fin", "#5c4541");
   const frames = material("dark-frames", "#3a4146");
   const glass = material("wing-glazing", "#536570", 0.46);
   const entryGlass = material("blue-entry-glazing", "#345e89", 0.37);
@@ -45,6 +46,7 @@ export function createB72Facade(scene: Scene, shadows: ShadowGenerator): void {
     const [width, height, depth] = size;
     const mesh = CreateBox(surface.name, { width, height, depth }, scene);
     mesh.position.set(x, y, z);
+    applyMasonryUvs(mesh, surface);
     const batch = batches.get(surface) ?? [];
     batch.push(mesh);
     batches.set(surface, batch);

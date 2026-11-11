@@ -13,6 +13,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import { annotationToWorld } from "@gta-mmmut/world-data";
 import { adminCoreBuildings } from "@gta-mmmut/world-data/admin-core";
 import earcut from "earcut";
+import { applyMasonryUvs, createMasonryMaterial } from "./masonry-finishes";
 
 type Point = readonly [x: number, z: number];
 
@@ -47,11 +48,11 @@ export function createB70Facade(scene: Scene, shadows: ShadowGenerator): void {
     return surface;
   }
 
-  const plaster = material("cream-wall", "#dfd3ba");
-  const stone = material("warm-stone", "#c99d74");
+  const plaster = createMasonryMaterial(scene, "B70-cream-wall", "#dfd3ba");
+  const stone = createMasonryMaterial(scene, "B70-warm-stone", "#c99d74", "stone");
   const brick = material("brick", "#996c50");
-  const band = material("clay-bands", "#89634f");
-  const roof = material("roof", "#b1a79b");
+  const band = createMasonryMaterial(scene, "B70-clay-bands", "#89634f", "stone");
+  const roof = createMasonryMaterial(scene, "B70-roof", "#b1a79b", "stone");
   const domes = material("pale-domes", "#f2ead9");
   const frames = material("glazing-frames", "#293d4d");
   const glass = material("blue-glazing", "#284d74", 0.35);
@@ -103,6 +104,7 @@ export function createB70Facade(scene: Scene, shadows: ShadowGenerator): void {
     const builder = new PolygonMeshBuilder(name, shape.map(([x, z]) => new Vector2(x, z)), scene, earcut);
     const volume = builder.build(false, top - bottom);
     volume.position.y = top;
+    applyMasonryUvs(volume, surface);
     volume.material = surface;
     volume.receiveShadows = true;
     return volume;
@@ -111,6 +113,7 @@ export function createB70Facade(scene: Scene, shadows: ShadowGenerator): void {
   function frontBox(surface: PBRMaterial, z: number, y: number, width: number, height: number, projection: number) {
     const mesh = CreateBox(surface.name, { width: projection + 0.04, height, depth: width }, scene);
     mesh.position.set(frontX + (projection - 0.04) / 2, y, z);
+    applyMasonryUvs(mesh, surface);
     return detail(mesh, surface);
   }
 
@@ -129,6 +132,7 @@ export function createB70Facade(scene: Scene, shadows: ShadowGenerator): void {
     data.indices = earcut(outline.flat(), undefined, 2);
     const mesh = new Mesh(surface.name, scene);
     data.applyToMesh(mesh);
+    applyMasonryUvs(mesh, surface);
     detail(mesh, surface);
   }
 
@@ -247,6 +251,7 @@ export function createB70Facade(scene: Scene, shadows: ShadowGenerator): void {
     const stepHeight = (i + 1) * 0.14;
     const step = CreateBox("B70-entry-step", { width: stepDepth, height: stepHeight, depth: 8.6 }, scene);
     step.position.set(frontX + stepDepth / 2, stepHeight / 2, entryZ);
+    applyMasonryUvs(step, band);
     steps.push(step);
   }
   const staircase = Mesh.MergeMeshes(steps, true, true);

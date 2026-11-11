@@ -22,6 +22,7 @@ interface FurnishedLocation {
 
 export interface FurnishedInterior {
   readonly spawn: Point3;
+  readonly spawnYaw?: number;
   readonly extent: InteriorBounds;
   floorAt(x: number, z: number, currentY: number): number;
   location(x: number, y: number, z: number): string | FurnishedLocation;

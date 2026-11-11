@@ -25,10 +25,11 @@ Approach a green entrance marker on foot and press **E**, or select a building i
 
 - CSE has connected new and old wings, furnished rooms, and a directory for each floor.
 - Central Library has reading tables, book stacks, and split stairs to the upper galleries. The Multipurpose Hall has red seating, aisles, and a raised stage.
-- Nalanda has six tiered lecture halls, the Graphics Designing Room, and a washroom. L-103 to L-105 face the Library side, and L-106 to L-108 face the Electrical Engineering side.
-- Pushpagiri and Takshashila have two walkable floors with numbered lecture halls, open galleries, stairs, and washrooms. Their entrance views face each other across the covered walkway. Electrical Engineering and ECE have separate road-facing entrance views.
+- Nalanda has six tiered lecture halls, the Graphics Designing Room, and a washroom. A continuous covered gallery connects the three wings and sits 2 feet above the central garden. **Nalanda courtyard** shows the layout from above.
+- Pushpagiri has a continuous roof over both levels. Takshashila has four wings around a paved, open-air courtyard, visible from the upper gallery and from **Takshashila courtyard**. The two lecture hall entrances face each other across the covered walkway.
+- Electrical Engineering and ECE have entrances on the sides facing toward Multipurpose Hall, with signs on the entrance and roadside façades.
 
-**Main gate** also offers an entrance fountain view. The Civil covered path ends in the passage between Old CSE and IT. The plan shows the Atal Bhawan perimeter drive, the Library road from TNP parking, and the separate Civil and Mechanical approaches.
+**Main gate** also offers an entrance fountain view. Campus roads have textured asphalt and white edge and lane markings. The western road by VC House is lined with bushes. The Civil covered path ends in the passage between Old CSE and IT. The plan shows the Atal Bhawan perimeter drive, the Library road from TNP parking, and the separate Civil and Mechanical approaches.
 
 **Settings** pauses walking and lets you change render resolution, mouse sensitivity, vertical look inversion, player field of view, camera motion and control hints. Preferences apply immediately and are saved in the current browser. **Reset defaults** restores the starting values.
 

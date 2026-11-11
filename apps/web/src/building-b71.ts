@@ -8,6 +8,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
 import { annotationToWorld } from "@gta-mmmut/world-data";
 import { adminCoreBuildings } from "@gta-mmmut/world-data/admin-core";
+import { applyMasonryUvs, createMasonryMaterial } from "./masonry-finishes";
 
 function sign(
   scene: Scene, name: string, x: number, y: number, z: number, width: number, height: number,
@@ -52,16 +53,15 @@ export function createB71Facade(scene: Scene, shadows: ShadowGenerator) {
     material.albedoColor = Color3.FromHexString(color).toLinearSpace();
     material.metallic = 0;
     material.roughness = roughness;
-    pieces.set(material, []);
     return material;
   }
 
-  const stone = finish("cream", "#ddd0b3");
-  const pier = finish("sand-piers", "#c8a484");
+  const stone = createMasonryMaterial(scene, "B71-cream", "#ddd0b3");
+  const pier = createMasonryMaterial(scene, "B71-sand-piers", "#c8a484", "stone");
   const frames = finish("window-frames", "#c7b79d");
   const glass = finish("dark-glazing", "#304650", 0.36);
   const deepGlass = finish("entry-glazing", "#25363b", 0.5);
-  const fascia = finish("maroon-fascia", "#793f37");
+  const fascia = createMasonryMaterial(scene, "B71-maroon-fascia", "#793f37");
 
   function box(
     material: PBRMaterial, x: number, y: number, z: number,
@@ -69,7 +69,10 @@ export function createB71Facade(scene: Scene, shadows: ShadowGenerator) {
   ) {
     const mesh = CreateBox(material.name, { width, height, depth }, scene);
     mesh.position.set(x, y, z);
-    pieces.get(material)!.push(mesh);
+    applyMasonryUvs(mesh, material);
+    const batch = pieces.get(material) ?? [];
+    batch.push(mesh);
+    pieces.set(material, batch);
   }
 
   function windowBay(x: number, y: number, z: number, width: number, height: number) {
@@ -117,6 +120,7 @@ export function createB71Facade(scene: Scene, shadows: ShadowGenerator) {
   for (const side of [-1, 1]) {
     const post = CreateBox("B71-portico-post", { width: 0.67, height: 3.24, depth: 0.65 }, scene);
     post.position.set(x + side * width * 0.42, 1.62, z + 1.22);
+    applyMasonryUvs(post, pier);
     post.material = pier;
     post.checkCollisions = true;
     post.receiveShadows = true;

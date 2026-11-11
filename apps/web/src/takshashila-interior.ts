@@ -1,6 +1,7 @@
 import { Color4 } from "@babylonjs/core/Maths/math.color";
 import type { Scene } from "@babylonjs/core/scene";
 import { createInteriorFurnishing, type FurnishedInterior, type InteriorBounds } from "./interior-furnishing";
+import { courtGalleries, insetCourt, takshashilaCourt as court, takshashilaGalleryWidth } from "./lecture-courtyards";
 import { buildModernLectureClassroom } from "./modern-lecture-classroom";
 
 type Side = "north" | "south" | "west" | "east";
@@ -9,10 +10,8 @@ const extent = [-38, -39, 38, 8] as const;
 const upper = 3.72;
 const wallHeight = 3.48;
 const doorHeight = 2.28;
-const court = [-21, -21, 21, -6] as const;
 const galleries: readonly InteriorBounds[] = [
-  [-25, -25, 25, -21], [-25, -6, 25, -2],
-  [-25, -21, -21, -6], [21, -21, 25, -6],
+  ...courtGalleries(insetCourt(court, -takshashilaGalleryWidth), court),
   [-38, -5, -25, -2], [-27, -2, -24, 8], [-30, 6, -27, 8],
   [17, -16, 21, -14],
 ];
