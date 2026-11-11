@@ -1,0 +1,130 @@
+.game-settings {
+  box-sizing: border-box;
+  width: min(28rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: clamp(1.15rem, 4vw, 1.65rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #597365;
+  border-radius: 12px;
+  background: #192d24;
+  color: #f1f2e9;
+}
+
+.game-settings::backdrop {
+  background: #0b1511bb;
+}
+
+.game-settings-header p {
+  margin: 0 0 0.35rem;
+  color: #c3d5c6;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.game-settings-header h2 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 720;
+  letter-spacing: -0.035em;
+}
+
+.game-settings-fields {
+  display: grid;
+  gap: 1rem;
+  margin: 1.35rem 0 1.5rem;
+}
+
+.game-settings-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.game-settings-field label,
+.game-settings-check {
+  font-size: 0.93rem;
+  font-weight: 650;
+}
+
+.game-settings-field small {
+  color: #bec9c0;
+  font-size: 0.78rem;
+}
+
+.game-settings-range-label,
+.game-settings-credits {
+  margin-top: 1rem;
+  color: #c3d5c6;
+  font-size: 0.82rem;
+}
+
+.game-settings-credits a {
+  text-decoration: underline;
+}
+
+.game-settings-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.game-settings-range-label span {
+  color: #e8bd70;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-settings-check {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.game-settings input {
+  accent-color: #c7dcc4;
+}
+
+.game-settings select,
+.game-settings button {
+  border: 1px solid #597365;
+  border-radius: 6px;
+  background: #263b31;
+  padding: 0.55rem 0.75rem;
+  color: inherit;
+}
+
+.game-settings-actions {
+  flex-wrap: wrap;
+  padding-top: 1rem;
+  border-top: 1px solid #3c4b43;
+}
+
+.game-settings button {
+  font-size: 0.88rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.game-settings button:hover {
+  background: #385546;
+}
+
+.game-settings .game-settings-done {
+  min-width: 5rem;
+  border-color: #a6c5a9;
+  background: #c7dcc4;
+  color: #162c22;
+}
+
+.game-settings .game-settings-done:hover {
+  background: #deedda;
+}
+
+.game-settings :is(button, select, input):focus-visible {
+  outline: 2px solid #e8bd70;
+  outline-offset: 2px;
+}

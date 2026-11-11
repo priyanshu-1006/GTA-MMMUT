@@ -1,0 +1,25 @@
+{
+  "name": "@gta-mmmut/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@babylonjs/core": "9.32.1",
+    "@babylonjs/loaders": "9.32.1",
+    "@gta-mmmut/world-data": "workspace:*",
+    "earcut": "3.0.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.5",
+    "@types/earcut": "3.0.0",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "tailwindcss": "4.3.5",
+    "vite": "8.3.6"
+  }
+}

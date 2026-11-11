@@ -1,0 +1,175 @@
+.player-wardrobe {
+  box-sizing: border-box;
+  width: min(44rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: clamp(1rem, 4vw, 1.55rem);
+  overflow: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  border: 1px solid #597365;
+  border-radius: 12px;
+  background: #192d24;
+  color: #f1f2e9;
+}
+
+.player-wardrobe::backdrop { background: #0b1511bb; }
+
+.wardrobe-header p {
+  margin: 0 0 0.3rem;
+  color: #c3d5c6;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.wardrobe-header h2 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 720;
+  letter-spacing: -0.035em;
+}
+
+.wardrobe-content {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.72fr) minmax(0, 1.65fr);
+  gap: 1.1rem;
+  margin-block: 1.05rem 1.3rem;
+}
+
+.wardrobe-preview {
+  display: grid;
+  grid-template-rows: minmax(14rem, 1fr) auto;
+  justify-items: center;
+  align-items: center;
+  min-height: 14rem;
+  overflow: hidden;
+  border: 1px solid #526c5e;
+  border-radius: 8px;
+  background: #243d32;
+}
+
+.wardrobe-preview-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+.wardrobe-preview-stage > canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  touch-action: none;
+}
+
+.wardrobe-color-preview {
+  display: block;
+  width: min(100%, 10rem);
+  max-height: 14.5rem;
+}
+
+.wardrobe-preview > span {
+  width: 100%;
+  border-top: 1px solid #526c5e;
+  padding: 0.44rem;
+  color: #c3d5c6;
+  font-size: 0.74rem;
+  text-align: center;
+}
+
+.wardrobe-controls { display: grid; gap: 0.78rem; }
+.wardrobe-controls fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.wardrobe-controls legend, .wardrobe-select > span { font-size: 0.89rem; font-weight: 650; }
+.wardrobe-controls legend { margin-bottom: 0.34rem; }
+
+.wardrobe-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+}
+
+.wardrobe-skins, .wardrobe-select-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.wardrobe-skin-pack { display: grid; gap: 0.28rem; min-width: 0; }
+.wardrobe-skin-pack p { margin: 0; color: #bec9c0; font-size: 0.68rem; }
+
+.wardrobe-skin {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-width: 0;
+  border: 1px solid #597365;
+  border-radius: 6px;
+  padding: 0.46rem;
+  background: #263b31;
+  cursor: pointer;
+}
+
+.wardrobe-skin strong { overflow-wrap: anywhere; font-size: 0.8rem; }
+.wardrobe-skin input { flex-shrink: 0; accent-color: #c7dcc4; }
+
+.wardrobe-swatch {
+  flex: 0 0 0.86rem;
+  height: 0.86rem;
+  border: 1px solid #c7b59d;
+  border-radius: 50%;
+}
+
+.wardrobe-select { display: grid; min-width: 0; gap: 0.27rem; }
+
+.player-wardrobe select, .player-wardrobe button {
+  max-width: 100%;
+  border: 1px solid #597365;
+  border-radius: 6px;
+  background: #263b31;
+  padding: 0.45rem 0.62rem;
+  color: inherit;
+  font-size: 0.82rem;
+}
+
+.player-wardrobe button { font-weight: 650; cursor: pointer; }
+.player-wardrobe button:hover, .player-wardrobe button[aria-pressed="true"] { background: #385546; }
+.player-wardrobe button[aria-pressed="true"] { border-color: #99bca2; }
+
+.wardrobe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  border-top: 1px solid #3c4b43;
+  padding-top: 0.82rem;
+}
+
+.player-wardrobe .wardrobe-done {
+  min-width: 5rem;
+  border-color: #a6c5a9;
+  background: #c7dcc4;
+  color: #162c22;
+}
+
+.player-wardrobe .wardrobe-done:hover { background: #deedda; }
+.player-wardrobe :is(button, select, input):focus-visible { outline: 2px solid #e8bd70; outline-offset: 2px; }
+
+@media (max-width: 570px) {
+  .wardrobe-content { grid-template-columns: 1fr; }
+  .wardrobe-preview { min-height: 8.5rem; }
+  .wardrobe-color-preview { max-height: 8rem; }
+}
+
+@media (max-width: 360px) {
+  .wardrobe-skins, .wardrobe-select-grid { grid-template-columns: 1fr; }
+}
+.wardrobe-credits { margin-block: 0.65rem 1rem; font-size: 0.82rem; color: #c3d5c6; }
+.wardrobe-credits a { text-decoration: underline; }

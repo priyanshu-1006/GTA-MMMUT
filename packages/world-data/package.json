@@ -1,0 +1,17 @@
+{
+  "name": "@gta-mmmut/world-data",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/southern-entrance.ts",
+    "./admin-core": "./src/admin-core.ts",
+    "./campus-access": "./src/campus-access.ts",
+    "./campus-boundary": "./src/campus-boundary.ts",
+    "./campus-buildings": "./src/campus-buildings.ts",
+    "./campus-gardens": "./src/campus-gardens.ts",
+    "./campus-roads": "./src/campus-roads.ts",
+    "./covered-walkways": "./src/covered-walkways.ts",
+    "./deoria-road": "./src/deoria-road.ts",
+    "./registry": "./src/registry.ts"
+  }
+}

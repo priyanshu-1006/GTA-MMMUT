@@ -1,0 +1,21 @@
+{
+  "name": "gta-mmmut",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.17.1",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "dev": "pnpm --filter @gta-mmmut/web dev",
+    "build": "pnpm --filter @gta-mmmut/web build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:browser": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3",
+    "vite": "8.3.6",
+    "vitest": "5.0.5"
+  }
+}

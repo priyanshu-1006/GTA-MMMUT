@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.pnpm-cache/
+.pnpm-store/
+playwright-report/
+test-results/
+/.vercel/
+/Assets/
+/*.zip
+/GTA_MMMUT_3D_Asset_Starter_and_Sources_v01/
+/GTA_MMMUT_Codex_Documentation_and_Maps_v01/
+/GTA_MMMUT_Preproduction_Master_Pack_v01/
+/MMMUT_Building_Mapping_Pack_v01/
+/references/
+/mmmut_numbered_master_map.png
