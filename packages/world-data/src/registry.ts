@@ -1,4 +1,4 @@
-import source from "../../../GTA_MMMUT_Preproduction_Master_Pack_v01/map/data/building_registry.json";
+import source from "./building-registry.json";
 import type { AnnotationPoint } from "./southern-entrance";
 
 const statuses = {

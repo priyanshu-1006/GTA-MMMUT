@@ -1,0 +1,618 @@
+[
+  {
+    "id": "B01",
+    "name": "Unidentified building or structure",
+    "status": "UNIDENTIFIED",
+    "map_x_px": 12,
+    "map_y_px": 18,
+    "floors": ""
+  },
+  {
+    "id": "B02",
+    "name": "Unidentified building or structure",
+    "status": "UNIDENTIFIED",
+    "map_x_px": 103,
+    "map_y_px": 32,
+    "floors": ""
+  },
+  {
+    "id": "B03",
+    "name": "Unidentified building or structure",
+    "status": "UNIDENTIFIED",
+    "map_x_px": 151,
+    "map_y_px": 19,
+    "floors": ""
+  },
+  {
+    "id": "B04",
+    "name": "Unidentified building or structure",
+    "status": "UNIDENTIFIED",
+    "map_x_px": 87,
+    "map_y_px": 121,
+    "floors": ""
+  },
+  {
+    "id": "B05",
+    "name": "Unidentified building or structure",
+    "status": "UNIDENTIFIED",
+    "map_x_px": 265,
+    "map_y_px": 191,
+    "floors": ""
+  },
+  {
+    "id": "B06",
+    "name": "Faculty Quarters",
+    "status": "CONFIRMED",
+    "map_x_px": 347,
+    "map_y_px": 188,
+    "floors": ""
+  },
+  {
+    "id": "B07",
+    "name": "Faculty Quarters",
+    "status": "CONFIRMED",
+    "map_x_px": 446,
+    "map_y_px": 193,
+    "floors": ""
+  },
+  {
+    "id": "B08",
+    "name": "Faculty Quarters",
+    "status": "CONFIRMED",
+    "map_x_px": 345,
+    "map_y_px": 315,
+    "floors": ""
+  },
+  {
+    "id": "B09",
+    "name": "Faculty Quarters",
+    "status": "CONFIRMED",
+    "map_x_px": 445,
+    "map_y_px": 317,
+    "floors": ""
+  },
+  {
+    "id": "B10",
+    "name": "Auditorium",
+    "status": "CONFIRMED",
+    "map_x_px": 174,
+    "map_y_px": 402,
+    "floors": ""
+  },
+  {
+    "id": "B11",
+    "name": "VC House",
+    "status": "CONFIRMED",
+    "map_x_px": 381,
+    "map_y_px": 397,
+    "floors": ""
+  },
+  {
+    "id": "B12",
+    "name": "VC House",
+    "status": "CONFIRMED",
+    "map_x_px": 419,
+    "map_y_px": 408,
+    "floors": ""
+  },
+  {
+    "id": "B13",
+    "name": "Outside MMMUT (B13)",
+    "status": "OUTSIDE",
+    "map_x_px": 26,
+    "map_y_px": 343,
+    "floors": ""
+  },
+  {
+    "id": "B14",
+    "name": "Outside MMMUT (B14)",
+    "status": "OUTSIDE",
+    "map_x_px": 47,
+    "map_y_px": 418,
+    "floors": ""
+  },
+  {
+    "id": "B15",
+    "name": "Outside MMMUT (B15)",
+    "status": "OUTSIDE",
+    "map_x_px": 65,
+    "map_y_px": 483,
+    "floors": ""
+  },
+  {
+    "id": "B16",
+    "name": "Multi Purpose Hall",
+    "status": "CONFIRMED",
+    "map_x_px": 804,
+    "map_y_px": 13,
+    "floors": ""
+  },
+  {
+    "id": "B17",
+    "name": "Multi Purpose Hall",
+    "status": "CONFIRMED",
+    "map_x_px": 838,
+    "map_y_px": 40,
+    "floors": ""
+  },
+  {
+    "id": "B18",
+    "name": "Unidentified building or structure",
+    "status": "UNIDENTIFIED",
+    "map_x_px": 940,
+    "map_y_px": 13,
+    "floors": ""
+  },
+  {
+    "id": "B19",
+    "name": "Stationery and Guard Post",
+    "status": "CONFIRMED",
+    "map_x_px": 582,
+    "map_y_px": 101,
+    "floors": ""
+  },
+  {
+    "id": "B20",
+    "name": "Bus Stand",
+    "status": "CONFIRMED",
+    "map_x_px": 606,
+    "map_y_px": 163,
+    "floors": ""
+  },
+  {
+    "id": "B21",
+    "name": "Cafeteria",
+    "status": "CONFIRMED",
+    "map_x_px": 676,
+    "map_y_px": 116,
+    "floors": ""
+  },
+  {
+    "id": "B22",
+    "name": "CSE Department — New Building",
+    "status": "CONFIRMED",
+    "map_x_px": 722,
+    "map_y_px": 237,
+    "floors": ""
+  },
+  {
+    "id": "B23",
+    "name": "CSE Department — Old Building",
+    "status": "CONFIRMED",
+    "map_x_px": 803,
+    "map_y_px": 249,
+    "floors": ""
+  },
+  {
+    "id": "B24",
+    "name": "ITRC",
+    "status": "CONFIRMED",
+    "map_x_px": 904,
+    "map_y_px": 262,
+    "floors": ""
+  },
+  {
+    "id": "B25",
+    "name": "Basic Sciences / Supporting Departments Cluster",
+    "status": "CONFIRMED",
+    "map_x_px": 697,
+    "map_y_px": 326,
+    "floors": ""
+  },
+  {
+    "id": "B26",
+    "name": "Basic Sciences / Supporting Departments Cluster",
+    "status": "CONFIRMED",
+    "map_x_px": 769,
+    "map_y_px": 325,
+    "floors": ""
+  },
+  {
+    "id": "B27",
+    "name": "Administration Offices (Dean UG, Scholarships, etc.)",
+    "status": "CONFIRMED",
+    "map_x_px": 893,
+    "map_y_px": 329,
+    "floors": ""
+  },
+  {
+    "id": "B28",
+    "name": "Civil Engineering — Block 2",
+    "status": "CONFIRMED",
+    "map_x_px": 707,
+    "map_y_px": 426,
+    "floors": ""
+  },
+  {
+    "id": "B29",
+    "name": "Civil Engineering — Block 2",
+    "status": "CONFIRMED",
+    "map_x_px": 774,
+    "map_y_px": 414,
+    "floors": ""
+  },
+  {
+    "id": "B30",
+    "name": "Electrical Engineering Department",
+    "status": "CONFIRMED",
+    "map_x_px": 1030,
+    "map_y_px": 160,
+    "floors": ""
+  },
+  {
+    "id": "B31",
+    "name": "Electrical Engineering Department",
+    "status": "CONFIRMED",
+    "map_x_px": 1030,
+    "map_y_px": 229,
+    "floors": ""
+  },
+  {
+    "id": "B32",
+    "name": "Electrical Engineering Department",
+    "status": "CONFIRMED",
+    "map_x_px": 1036,
+    "map_y_px": 306,
+    "floors": ""
+  },
+  {
+    "id": "B33",
+    "name": "Nalanda Lecture Hall Complex",
+    "status": "CONFIRMED",
+    "map_x_px": 1011,
+    "map_y_px": 345,
+    "floors": ""
+  },
+  {
+    "id": "B34",
+    "name": "Nalanda Lecture Hall Complex",
+    "status": "CONFIRMED",
+    "map_x_px": 1046,
+    "map_y_px": 397,
+    "floors": ""
+  },
+  {
+    "id": "B35",
+    "name": "Nalanda Lecture Hall Complex",
+    "status": "CONFIRMED",
+    "map_x_px": 1020,
+    "map_y_px": 458,
+    "floors": ""
+  },
+  {
+    "id": "B36",
+    "name": "Electronics & Communication Engineering Department",
+    "status": "CONFIRMED",
+    "map_x_px": 1100,
+    "map_y_px": 158,
+    "floors": ""
+  },
+  {
+    "id": "B37",
+    "name": "Unidentified building or structure",
+    "status": "UNIDENTIFIED",
+    "map_x_px": 1515,
+    "map_y_px": 81,
+    "floors": ""
+  },
+  {
+    "id": "B38",
+    "name": "Mechanical & Electrical Workshops",
+    "status": "CONFIRMED",
+    "map_x_px": 1296,
+    "map_y_px": 120,
+    "floors": ""
+  },
+  {
+    "id": "B39",
+    "name": "Mechanical & Electrical Workshops",
+    "status": "CONFIRMED",
+    "map_x_px": 1473,
+    "map_y_px": 121,
+    "floors": ""
+  },
+  {
+    "id": "B40",
+    "name": "Mechanical & Electrical Workshops",
+    "status": "CONFIRMED",
+    "map_x_px": 1512,
+    "map_y_px": 184,
+    "floors": ""
+  },
+  {
+    "id": "B41",
+    "name": "Mechanical & Electrical Workshops",
+    "status": "CONFIRMED",
+    "map_x_px": 1299,
+    "map_y_px": 237,
+    "floors": ""
+  },
+  {
+    "id": "B42",
+    "name": "Mechanical & Electrical Workshops",
+    "status": "CONFIRMED",
+    "map_x_px": 1477,
+    "map_y_px": 230,
+    "floors": ""
+  },
+  {
+    "id": "B43",
+    "name": "Electronics & Communication Engineering Department",
+    "status": "CONFIRMED",
+    "map_x_px": 1152,
+    "map_y_px": 236,
+    "floors": ""
+  },
+  {
+    "id": "B44",
+    "name": "Management Department",
+    "status": "CONFIRMED",
+    "map_x_px": 1205,
+    "map_y_px": 238,
+    "floors": ""
+  },
+  {
+    "id": "B45",
+    "name": "Pushpagiri Lecture Hall Complex",
+    "status": "CONFIRMED",
+    "map_x_px": 1295,
+    "map_y_px": 290,
+    "floors": "2"
+  },
+  {
+    "id": "B46",
+    "name": "Electronics & Communication Engineering Department",
+    "status": "CONFIRMED",
+    "map_x_px": 1196,
+    "map_y_px": 306,
+    "floors": ""
+  },
+  {
+    "id": "B47",
+    "name": "Takshilla Lecture Hall Complex",
+    "status": "CONFIRMED",
+    "map_x_px": 1252,
+    "map_y_px": 379,
+    "floors": "2"
+  },
+  {
+    "id": "B48",
+    "name": "Mechanical Engineering Department",
+    "status": "CONFIRMED",
+    "map_x_px": 1153,
+    "map_y_px": 386,
+    "floors": ""
+  },
+  {
+    "id": "B49",
+    "name": "Chemical Engineering Department",
+    "status": "CONFIRMED",
+    "map_x_px": 1228,
+    "map_y_px": 469,
+    "floors": ""
+  },
+  {
+    "id": "B50",
+    "name": "Under-construction building (use unknown)",
+    "status": "UNDER_CONSTRUCTION",
+    "map_x_px": 1309,
+    "map_y_px": 477,
+    "floors": ""
+  },
+  {
+    "id": "B51",
+    "name": "NIELIT",
+    "status": "OUTSIDE",
+    "map_x_px": 1513,
+    "map_y_px": 506,
+    "floors": ""
+  },
+  {
+    "id": "B52",
+    "name": "Mechanical Engineering Department",
+    "status": "CONFIRMED",
+    "map_x_px": 1135,
+    "map_y_px": 465,
+    "floors": ""
+  },
+  {
+    "id": "B53",
+    "name": "Sarojini Bhavan (Girls Hostel)",
+    "status": "CONFIRMED",
+    "map_x_px": 359,
+    "map_y_px": 538,
+    "floors": ""
+  },
+  {
+    "id": "B54",
+    "name": "Unidentified building or structure",
+    "status": "UNIDENTIFIED",
+    "map_x_px": 458,
+    "map_y_px": 637,
+    "floors": ""
+  },
+  {
+    "id": "B55",
+    "name": "MMMUT Guest House",
+    "status": "CONFIRMED",
+    "map_x_px": 441,
+    "map_y_px": 759,
+    "floors": ""
+  },
+  {
+    "id": "B56",
+    "name": "Unidentified building or structure",
+    "status": "UNIDENTIFIED",
+    "map_x_px": 265,
+    "map_y_px": 850,
+    "floors": ""
+  },
+  {
+    "id": "B57",
+    "name": "Unidentified building or structure",
+    "status": "UNIDENTIFIED",
+    "map_x_px": 342,
+    "map_y_px": 841,
+    "floors": ""
+  },
+  {
+    "id": "B58",
+    "name": "Outside MMMUT (B58)",
+    "status": "OUTSIDE",
+    "map_x_px": 151,
+    "map_y_px": 868,
+    "floors": ""
+  },
+  {
+    "id": "B59",
+    "name": "Outside MMMUT (B59)",
+    "status": "OUTSIDE",
+    "map_x_px": 126,
+    "map_y_px": 809,
+    "floors": ""
+  },
+  {
+    "id": "B60",
+    "name": "Outside MMMUT (B60)",
+    "status": "OUTSIDE",
+    "map_x_px": 193,
+    "map_y_px": 821,
+    "floors": ""
+  },
+  {
+    "id": "B61",
+    "name": "Outside MMMUT (B61)",
+    "status": "OUTSIDE",
+    "map_x_px": 51,
+    "map_y_px": 773,
+    "floors": ""
+  },
+  {
+    "id": "B62",
+    "name": "Outside MMMUT (B62)",
+    "status": "OUTSIDE",
+    "map_x_px": 17,
+    "map_y_px": 727,
+    "floors": ""
+  },
+  {
+    "id": "B63",
+    "name": "Outside MMMUT (B63)",
+    "status": "OUTSIDE",
+    "map_x_px": 125,
+    "map_y_px": 722,
+    "floors": ""
+  },
+  {
+    "id": "B64",
+    "name": "Outside MMMUT (B64)",
+    "status": "OUTSIDE",
+    "map_x_px": 168,
+    "map_y_px": 704,
+    "floors": ""
+  },
+  {
+    "id": "B65",
+    "name": "Outside MMMUT (B65)",
+    "status": "OUTSIDE",
+    "map_x_px": 52,
+    "map_y_px": 649,
+    "floors": ""
+  },
+  {
+    "id": "B66",
+    "name": "Outside MMMUT (B66)",
+    "status": "OUTSIDE",
+    "map_x_px": 29,
+    "map_y_px": 583,
+    "floors": ""
+  },
+  {
+    "id": "B67",
+    "name": "Outside MMMUT (B67)",
+    "status": "OUTSIDE",
+    "map_x_px": 15,
+    "map_y_px": 547,
+    "floors": ""
+  },
+  {
+    "id": "B68",
+    "name": "Outside MMMUT (B68)",
+    "status": "OUTSIDE",
+    "map_x_px": 22,
+    "map_y_px": 681,
+    "floors": ""
+  },
+  {
+    "id": "B69",
+    "name": "Outside MMMUT (B69)",
+    "status": "OUTSIDE",
+    "map_x_px": 45,
+    "map_y_px": 507,
+    "floors": ""
+  },
+  {
+    "id": "B70",
+    "name": "Atal Bhawan",
+    "status": "CONFIRMED",
+    "map_x_px": 675,
+    "map_y_px": 746,
+    "floors": ""
+  },
+  {
+    "id": "B71",
+    "name": "Administration Building",
+    "status": "CONFIRMED",
+    "map_x_px": 901,
+    "map_y_px": 564,
+    "floors": "2"
+  },
+  {
+    "id": "B72",
+    "name": "Training and Placement Cell",
+    "status": "CONFIRMED",
+    "map_x_px": 1044,
+    "map_y_px": 565,
+    "floors": "2"
+  },
+  {
+    "id": "B73",
+    "name": "Civil Department — Block 1",
+    "status": "CONFIRMED",
+    "map_x_px": 777,
+    "map_y_px": 501,
+    "floors": ""
+  },
+  {
+    "id": "B74",
+    "name": "Civil Department — Block 1",
+    "status": "CONFIRMED",
+    "map_x_px": 687,
+    "map_y_px": 503,
+    "floors": ""
+  },
+  {
+    "id": "B75",
+    "name": "Library",
+    "status": "CONFIRMED",
+    "map_x_px": 1043,
+    "map_y_px": 506,
+    "floors": ""
+  },
+  {
+    "id": "B76",
+    "name": "Under-construction building (use unknown)",
+    "status": "UNDER_CONSTRUCTION",
+    "map_x_px": 1285,
+    "map_y_px": 580,
+    "floors": ""
+  },
+  {
+    "id": "B77",
+    "name": "Under-construction building (use unknown)",
+    "status": "UNDER_CONSTRUCTION",
+    "map_x_px": 1357,
+    "map_y_px": 563,
+    "floors": ""
+  }
+]
