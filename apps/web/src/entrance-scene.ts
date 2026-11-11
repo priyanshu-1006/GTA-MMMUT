@@ -1,6 +1,7 @@
 import { VertexBuffer } from '@babylonjs/core/Buffers/buffer';
 import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
 import type { Engine } from '@babylonjs/core/Engines/engine';
+import { PointerEventTypes } from '@babylonjs/core/Events/pointerEvents';
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator';
@@ -40,6 +41,9 @@ import { createCampusGardens } from './campus-gardens';
 import { createCampusSky } from './campus-sky';
 import { createCampusWalk } from './campus-walk';
 import { createCampusVehicles } from './campus-vehicles';
+import { createCampusPedestrians } from './campus-pedestrians';
+import { createCampusTraffic, type TrafficObstacle } from './campus-traffic';
+import { createCampusChant } from './campus-chant';
 import { createCoveredWalkways } from './campus-walkways';
 import { createDeoriaRoad } from './deoria-road';
 import { createEntranceFinishing, entranceSidewalkHeight } from './entrance-finishing';
@@ -398,7 +402,13 @@ function createCamera(
   return { camera, applyView };
 }
 
-export function createEntranceScene(engine: Engine, canvas: HTMLCanvasElement, onPlayerStatus: (status: PlayerStatus) => void) {
+export function createEntranceScene(
+  engine: Engine,
+  canvas: HTMLCanvasElement,
+  onPlayerStatus: (status: PlayerStatus) => void,
+  onEnterCse: () => void,
+  onSelectCse: () => void,
+) {
   const scene = new Scene(engine);
   scene.useRightHandedSystem = true;
   scene.collisionsEnabled = true;
@@ -524,18 +534,72 @@ export function createEntranceScene(engine: Engine, canvas: HTMLCanvasElement, o
   createB72Facade(scene, shadows);
   createCoveredWalkways(scene, shadows);
   const vehicles = createCampusVehicles(scene, shadows, worldPoints);
+  const cse = campusBuildings.find(({ id }) => id === 'B22')!;
+  const porchNorth = Math.min(...cse.footprint.map(([, y]) => y));
+  const porchEdges = cse.footprint.filter(([, y]) => y === porchNorth);
+  const [entryX, entryZ] = annotationToWorld([(porchEdges[0][0] + porchEdges[1][0]) / 2, porchNorth]);
   const shadowMap = shadows.getShadowMap();
   if (shadowMap) shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
   const walk = createCampusWalk(scene, canvas, gate, worldPoints, (x, z) => {
     if (sidewalks.some((outline) => containsPoint(outline, [x, z]))) return entranceSidewalkHeight;
-  }, vehicles, onPlayerStatus);
+  }, vehicles, onPlayerStatus, {
+    portal: {
+      contains: ([x, z]) => Math.abs(x - entryX) < 3.3 && z > entryZ - 3 && z < entryZ + 0.7,
+      interact: onEnterCse,
+    },
+  });
+  function vehicleAndPlayerObstacles() {
+    const obstacles = vehicles.states().map((vehicle) => ({
+      position: vehicle.position, radius: vehicle.kind === 'car' ? 1.75 : 0.75,
+    }));
+    const player = walk.worldPosition();
+    if (player && !vehicles.active()) obstacles.push({ position: [player.x, player.z], radius: 0.55 });
+    return obstacles;
+  }
+  const traffic = createCampusTraffic(scene);
+  const people = createCampusPedestrians(scene, shadows, () => {
+    const obstacles = vehicleAndPlayerObstacles();
+    const car = traffic.obstacle();
+    if (car) obstacles.push({ position: car.position, radius: 2.45 });
+    return obstacles;
+  });
+  const chant = createCampusChant(people.chantCenters);
+  let view: EntranceView = 'entrance';
+  let paused = false;
+  function setWalkPaused(value: boolean) {
+    paused = value;
+    walk.setPaused(value);
+    people.setPaused(value);
+    if (value) chant.update(null);
+  }
+  scene.onBeforeRenderObservable.add(() => {
+    if (paused) return;
+    const player = walk.worldPosition();
+    const blockers: TrafficObstacle[] = [...people.blockers(), ...vehicles.states()];
+    if (player && !vehicles.active()) blockers.push({ position: [player.x, player.z], radius: 0.55 });
+    traffic.update(Math.min(engine.getDeltaTime() / 1000, 0.1), blockers);
+    chant.update(player ? [player.x, player.z] : null);
+  });
+  scene.onPointerObservable.add(({ type, pickInfo }) => {
+    if (type !== PointerEventTypes.POINTERPICK || view === 'walk' || paused) return;
+    const name = pickInfo?.pickedMesh?.name;
+    if (name === 'B22' || name === 'B22-roof-cap' || name === 'B22-nameplate') onSelectCse();
+  });
+  scene.onDisposeObservable.addOnce(chant.dispose);
   return {
     scene,
-    setView(view: EntranceView) {
+    suspend() {
+      setWalkPaused(true);
+      walk.setActive(false);
+      preview.camera.detachControl();
+    },
+    setView(nextView: EntranceView) {
+      view = nextView;
       if (view === 'walk') {
         preview.camera.detachControl();
         scene.fogDensity = walkFogDensity;
         walk.setActive(true);
+        chant.start();
       } else {
         walk.setActive(false);
         scene.activeCamera = preview.camera;
@@ -544,17 +608,20 @@ export function createEntranceScene(engine: Engine, canvas: HTMLCanvasElement, o
         if (view === 'tnp-parking') vehicles.prefetchNearby(...annotationToWorld(campusGardens.placementParking.center), 'car');
       }
     },
-    setWalkPaused: walk.setPaused,
+    setWalkPaused,
     setPlayerCamera: walk.setCamera,
     setPlayerAppearance: walk.setAppearance,
     interactWithVehicle: walk.interact,
     mapPose: walk.mapPose,
-    setSettings({ renderQuality, lookSensitivity, invertY, reducedMotion, fieldOfView }: GameSettings) {
+    setSettings({ renderQuality, lookSensitivity, invertY, reducedMotion, fieldOfView, campusSounds }: GameSettings) {
       const scale = renderScale[renderQuality];
       if (engine.getHardwareScalingLevel() !== scale) engine.setHardwareScalingLevel(scale);
       canvas.dataset.renderQuality = renderQuality;
       walk.setReducedMotion(reducedMotion);
       setSkyReducedMotion(reducedMotion);
+      people.setReducedMotion(reducedMotion);
+      chant.setEnabled(campusSounds);
+      if (view === 'walk') chant.start();
       walk.camera.fov = fieldOfView * Math.PI / 180;
       for (const camera of [preview.camera, walk.camera]) {
         const rotations = camera.movement.input.getEntries('pointer', 'rotate');

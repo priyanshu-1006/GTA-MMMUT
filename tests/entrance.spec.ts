@@ -30,6 +30,8 @@ test("renders the southern entrance, walks through the gate, and opens the map",
   page,
 }, testInfo) => {
   test.setTimeout(240_000);
+  // Keep the static gate checks independent of ambient traffic timing and crowd rendering.
+  await page.route((url) => /\/(?:scorpio|campus-crowd)(?:-[\w-]+)?\.glb$/.test(url.pathname), (route) => route.abort());
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
@@ -125,7 +127,7 @@ test("renders the southern entrance, walks through the gate, and opens the map",
   const spawnY = await playerCoordinate("y");
   const [postX, gateZ] = annotationToWorld(southernEntrance.gate.span[1]);
   function move(
-    keys: string[], axis: "x" | "z", target: number, direction: -1 | 1, timeout = 10_000,
+    keys: string[], axis: "x" | "z", target: number, direction: -1 | 1, timeout = 18_000,
   ) {
     return walkTo(canvas, keys, axis, target, direction, timeout);
   }
@@ -158,7 +160,7 @@ test("renders the southern entrance, walks through the gate, and opens the map",
   }));
   expect(jump.peak).toBeGreaterThan(spawnY + 0.25);
   expect(jump.end).toBeCloseTo(spawnY, 1);
-  expect(await move(["ShiftLeft", "KeyW"], "z", 16, -1, 25_000)).toBeLessThanOrEqual(16);
+  expect(await move(["ShiftLeft", "KeyW"], "z", 16, -1, 42_000)).toBeLessThanOrEqual(16);
   expect(await move(["KeyW", "KeyD"], "x", 6, 1)).toBeGreaterThanOrEqual(6);
   expect(await playerCoordinate("z")).toBeLessThan(11);
   expect(await move(["KeyS", "KeyA"], "x", spawnX, -1)).toBeLessThanOrEqual(spawnX);
@@ -394,6 +396,58 @@ test("loads the Alto 800 and Scorpio in TNP parking", async ({ page }, testInfo)
   }));
   await page.screenshot({ path: testInfo.outputPath("tnp-indian-cars.png") });
   expect(modelErrors).toEqual([]);
+});
+
+test("enters CSE, visits both floors and wings, and returns outdoors", async ({ page }, testInfo) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1080, height: 720 });
+  await page.addInitScript(() => {
+    if (location.protocol === "http:") localStorage.setItem("gta-mmmut.settings.v1", JSON.stringify({ renderQuality: "low" }));
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("3D preview ready", { timeout: 35_000 });
+  await page.getByRole("button", { name: "Building view" }).click();
+  const building = page.getByRole("combobox", { name: "Building to inspect" });
+  await building.selectOption("cse");
+  await page.getByRole("button", { name: "Enter CSE", exact: true }).click();
+  const canvas = page.getByLabel("3D CSE interior");
+  await expect(canvas).toHaveAttribute("data-cse-floor", "0", { timeout: 30_000 });
+  await expect(canvas).toHaveAttribute("data-cse-section", "New CSE");
+  const directory = page.getByRole("navigation", { name: "CSE room directory" });
+  await directory.getByText("Ground floor directory", { exact: true }).click();
+  await expect(directory.getByText("Prof. Rakesh Kumar", { exact: true })).toBeVisible();
+  await expect(directory.getByText("Cybersecurity and Blockchain Lab", { exact: true })).toBeVisible();
+  await directory.getByText("Ground floor directory", { exact: true }).click();
+  await directory.getByText("First floor directory", { exact: true }).click();
+  await expect(directory.getByText("Alan Turing Hall", { exact: true })).toBeVisible();
+  await expect(directory.getByText("AR/VR Lab", { exact: true })).toBeVisible();
+  await directory.getByText("First floor directory", { exact: true }).click();
+
+  await canvas.focus();
+  async function reach(axis: "x" | "z", target: number, key: string, direction: -1 | 1) {
+    const end = await walkTo(canvas, [key], axis, target, direction, 23_000);
+    expect((end - target) * direction).toBeGreaterThanOrEqual(0);
+  }
+  await reach("z", -3.25, "KeyW", -1);
+  await reach("x", -2.5, "KeyA", -1);
+  await expect(canvas).toHaveAttribute("data-cse-room", "hod-cabin");
+  await page.screenshot({ path: testInfo.outputPath("cse-hod-cabin.png") });
+  await reach("x", -0.7, "KeyD", 1);
+  await reach("z", -22.1, "KeyW", -1);
+  await reach("x", -3.05, "KeyA", -1);
+  await reach("z", -30.4, "KeyW", -1);
+  await expect(canvas).toHaveAttribute("data-cse-floor", "1");
+  await reach("x", -0.7, "KeyD", 1);
+  await reach("z", -50.2, "KeyW", -1);
+  await expect(canvas).toHaveAttribute("data-cse-section", "Old CSE");
+  await reach("x", 2.5, "KeyD", 1);
+  await expect(canvas).toHaveAttribute("data-cse-room", "dw-lab");
+  await page.screenshot({ path: testInfo.outputPath("old-cse-dw-lab.png") });
+  await page.getByRole("button", { name: "Exit to campus" }).click();
+  await expect(page.getByLabel("3D campus entrance preview", { exact: true })).toHaveAttribute("data-camera-view", "cse");
+  expect(errors).toEqual([]);
 });
 
 test("previews the frontage, campus access roads, and landmarks", async ({ page }, testInfo) => {

@@ -10,6 +10,7 @@ export type GameSettings = {
   showControlHints: boolean;
   fieldOfView: number;
   reducedMotion: boolean;
+  campusSounds: boolean;
 };
 
 const storageKey = "gta-mmmut.settings.v1";
@@ -23,6 +24,7 @@ export const defaultGameSettings: Readonly<GameSettings> = Object.freeze({
   showControlHints: true,
   fieldOfView: 46,
   reducedMotion: false,
+  campusSounds: true,
 });
 
 function isRenderQuality(value: unknown): value is RenderQuality {
@@ -38,7 +40,7 @@ export function loadGameSettings(): GameSettings {
     }
 
     const settings = value as Record<string, unknown>;
-    const { renderQuality, lookSensitivity, invertY, showControlHints, fieldOfView, reducedMotion } = settings;
+    const { renderQuality, lookSensitivity, invertY, showControlHints, fieldOfView, reducedMotion, campusSounds } = settings;
     return {
       renderQuality: isRenderQuality(renderQuality) ? renderQuality : defaultGameSettings.renderQuality,
       lookSensitivity: typeof lookSensitivity === "number"
@@ -53,6 +55,7 @@ export function loadGameSettings(): GameSettings {
       fieldOfView: typeof fieldOfView === "number" && fieldOfView >= 35 && fieldOfView <= 74
         ? fieldOfView : defaultGameSettings.fieldOfView,
       reducedMotion: reducedMotion === true,
+      campusSounds: typeof campusSounds === "boolean" ? campusSounds : defaultGameSettings.campusSounds,
     };
   } catch {
     return { ...defaultGameSettings };
@@ -172,6 +175,11 @@ export function GameSettingsPanel({ value, onChange, onClose }: GameSettingsPane
           <input type="checkbox" checked={value.reducedMotion}
             onChange={(event) => onChange({ ...value, reducedMotion: event.currentTarget.checked })} />
           Reduce camera motion
+        </label>
+        <label className="game-settings-check">
+          <input type="checkbox" checked={value.campusSounds}
+            onChange={(event) => onChange({ ...value, campusSounds: event.currentTarget.checked })} />
+          Campus sounds
         </label>
       </div>
 

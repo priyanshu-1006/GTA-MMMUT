@@ -99,6 +99,8 @@ export interface VehicleState {
   readonly chaseDistance: number;
   readonly seat: readonly [number, number, number];
   readonly modelReady: boolean;
+  readonly halfWidth: number;
+  readonly halfLength: number;
 }
 
 interface Wheel {
@@ -125,7 +127,7 @@ const approach = (value: number, target: number, amount: number) =>
   value + Math.sign(target - value) * Math.min(Math.abs(target - value), amount);
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-function createContactShadowMaterial(scene: Scene) {
+export function createContactShadowMaterial(scene: Scene) {
   const size = 32;
   const pixels = new Uint8Array(size * size * 4);
   for (let index = 0; index < size * size; index++) {
@@ -151,6 +153,7 @@ function describe(rig: VehicleRig): VehicleState {
   const side = spec.seatSide ?? 0;
   return {
     id: spec.id, kind: spec.kind, label: spec.label, position: [x, z], yaw, speed, modelReady,
+    halfWidth: spec.halfWidth, halfLength: spec.halfLength,
     chaseDistance: spec.chaseDistance,
     seat: [
       x + Math.sin(yaw) * spec.seatOffset + Math.cos(yaw) * side,

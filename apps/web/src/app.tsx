@@ -12,6 +12,8 @@ import { coveredWalkways } from "@gta-mmmut/world-data/covered-walkways";
 import { deoriaRoad } from "@gta-mmmut/world-data/deoria-road";
 import { campusRegistry } from "@gta-mmmut/world-data/registry";
 import type { createEntranceScene, EntranceView } from "./entrance-scene";
+import type { createCseInteriorScene, CseLocation } from "./cse-interior-scene";
+import type { CseRoom } from "./cse-interior-layout";
 import { GameSettingsPanel, loadGameSettings, saveGameSettings, type GameSettings } from "./game-settings";
 import { loadPlayerAppearance, savePlayerAppearance, type PlayerAppearance } from "./player-appearance";
 import { playerCameras, type PlayerCamera, type PlayerStatus } from "./player-controls";
@@ -292,10 +294,41 @@ function WardrobeCharacterPreview({ appearance }: { appearance: PlayerAppearance
     : <canvas ref={canvas} tabIndex={0} aria-label="Rotatable 3D outfit preview" />;
 }
 
+function CseDirectory({ rooms }: { rooms: readonly CseRoom[] }) {
+  return (
+    <nav className="cse-directory" aria-label="CSE room directory">
+      {([0, 1] as const).map((floor) => (
+        <details key={floor}>
+          <summary>{floor === 0 ? "Ground floor" : "First floor"} directory</summary>
+          {(["new", "old"] as const).map((wing) => (
+            <section key={wing}>
+              <h2>{wing === "new" ? "New CSE" : "Old CSE"}</h2>
+              <ul>
+                {rooms.filter((room) => room.wing === wing && room.floor === floor).map((room) => (
+                  <li key={room.id}><span>{room.label}</span>{room.subtitle && <small>{room.subtitle}</small>}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </details>
+      ))}
+    </nav>
+  );
+}
+
+const initialPlayerStatus: PlayerStatus = {
+  camera: "follow", vehicle: null, vehicleKind: null, nearby: null, portalNearby: false, speed: 0,
+};
+
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapMarkerRef = useRef<SVGGElement>(null);
   const sessionRef = useRef<ReturnType<typeof createEntranceScene> | null>(null);
+  const engineRef = useRef<Engine | null>(null);
+  const cseRef = useRef<ReturnType<typeof createCseInteriorScene> | null>(null);
+  const cseLoadingRef = useRef(false);
+  const enterCseRef = useRef<() => void>(() => {});
+  const exitCseRef = useRef<() => void>(() => {});
   const [state, setState] = useState<PreviewState>("loading");
   const [mapOpen, setMapOpen] = useState(false);
   const [cameraView, setCameraView] = useState<EntranceView>("entrance");
@@ -307,35 +340,92 @@ export function App() {
   const appearanceRef = useRef(appearance);
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const wardrobeRef = useRef(false);
-  const [playerStatus, setPlayerStatus] = useState<PlayerStatus>({ camera: "follow", vehicle: null, vehicleKind: null, nearby: null, speed: 0 });
+  const [playerStatus, setPlayerStatus] = useState(initialPlayerStatus);
+  const [csePlayerStatus, setCsePlayerStatus] = useState<PlayerStatus>({ ...initialPlayerStatus, camera: "first" });
+  const [cseLocation, setCseLocation] = useState<CseLocation>();
+  const [insideCse, setInsideCse] = useState(false);
+  const [loadingCse, setLoadingCse] = useState(false);
+  const [cseError, setCseError] = useState(false);
   const showMap = mapOpen || state === "unavailable";
   const overviewActive = !showMap && cameraView === "network";
   const buildingsActive = !showMap && buildingViews.some(({ view }) => view === cameraView);
   const gateActive = !showMap && entranceDetails.some(({ view }) => view === cameraView);
   const walking = cameraView === "walk";
-  const showMinimap = walking && !showMap && state === "ready";
+  const showMinimap = walking && !insideCse && !showMap && state === "ready";
+  const canEnterCse = !showMap && (cameraView === "cse" || cameraView === "cse-complex" || (walking && playerStatus.portalNearby));
 
   function changeView(view: EntranceView) {
+    if (cseLoadingRef.current) return;
     sessionRef.current?.setWalkPaused(false);
     sessionRef.current?.setView(view);
     setCameraView(view);
     setMapOpen(false);
   }
 
+  async function enterCse() {
+    const renderer = engineRef.current;
+    const outdoor = sessionRef.current;
+    const canvas = canvasRef.current;
+    if (!renderer || !outdoor || !canvas || cseRef.current || cseLoadingRef.current || playerStatus.vehicle || showMap) return;
+    cseLoadingRef.current = true;
+    setLoadingCse(true);
+    setCseError(false);
+    outdoor.setWalkPaused(true);
+    try {
+      const { createCseInteriorScene } = await import("./cse-interior-scene");
+      if (engineRef.current !== renderer) return;
+      const interior = createCseInteriorScene(renderer, canvas, setCsePlayerStatus, setCseLocation,
+        () => exitCseRef.current());
+      cseRef.current = interior;
+      interior.setSettings(settingsRef.current);
+      interior.setAppearance(appearanceRef.current);
+      outdoor.suspend();
+      interior.activate();
+      setInsideCse(true);
+    } catch (error) {
+      console.error("Unable to open the CSE interior.", error);
+      cseRef.current?.scene.dispose();
+      cseRef.current = null;
+      outdoor.setView(cameraView);
+      outdoor.setWalkPaused(false);
+      setCseError(true);
+    } finally {
+      cseLoadingRef.current = false;
+      if (engineRef.current === renderer) setLoadingCse(false);
+    }
+  }
+
+  function exitCse() {
+    const interior = cseRef.current;
+    if (!interior) return;
+    cseRef.current = null;
+    interior.scene.dispose();
+    sessionRef.current?.setView(cameraView);
+    sessionRef.current?.setWalkPaused(false);
+    setInsideCse(false);
+    setCseLocation(undefined);
+  }
+
+  function setPlayPaused(value: boolean) {
+    if (cseRef.current) cseRef.current.setPaused(value);
+    else sessionRef.current?.setWalkPaused(value);
+  }
+
   function toggleMap() {
+    if (cseLoadingRef.current) return;
     if (!mapOpen) setMapPlayerPoint(sessionRef.current?.mapPose()?.point ?? null);
     sessionRef.current?.setWalkPaused(!mapOpen);
     setMapOpen(!mapOpen);
   }
 
   function toggleSettings(open: boolean) {
-    sessionRef.current?.setWalkPaused(open || mapOpen || wardrobeOpen);
+    setPlayPaused(open || mapOpen || wardrobeOpen);
     setSettingsOpen(open);
   }
 
   function toggleWardrobe(open: boolean) {
     wardrobeRef.current = open;
-    sessionRef.current?.setWalkPaused(open || mapOpen || settingsOpen);
+    setPlayPaused(open || mapOpen || settingsOpen);
     setWardrobeOpen(open);
   }
 
@@ -344,6 +434,7 @@ export function App() {
     setAppearance(value);
     savePlayerAppearance(value);
     sessionRef.current?.setPlayerAppearance(value);
+    cseRef.current?.setAppearance(value);
   }
 
   function updateSettings(value: GameSettings) {
@@ -351,11 +442,17 @@ export function App() {
     setSettings(value);
     saveGameSettings(value);
     sessionRef.current?.setSettings(value);
+    cseRef.current?.setSettings(value);
   }
 
   useEffect(() => {
-    if (walking && !showMap && !settingsOpen && !wardrobeOpen) canvasRef.current?.focus({ preventScroll: true });
-  }, [walking, showMap, settingsOpen, wardrobeOpen]);
+    enterCseRef.current = () => { void enterCse(); };
+    exitCseRef.current = exitCse;
+  });
+
+  useEffect(() => {
+    if ((walking || insideCse) && !showMap && !settingsOpen && !wardrobeOpen) canvasRef.current?.focus({ preventScroll: true });
+  }, [walking, insideCse, showMap, settingsOpen, wardrobeOpen]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -376,7 +473,9 @@ export function App() {
 
         const renderer = new Engine(target, true, undefined, true);
         engine = renderer;
-        const session = createEntranceScene(renderer, target, setPlayerStatus);
+        engineRef.current = renderer;
+        const session = createEntranceScene(renderer, target, setPlayerStatus,
+          () => enterCseRef.current(), () => changeView("cse"));
         const entrance = session.scene;
         scene = entrance;
         sessionRef.current = session;
@@ -389,6 +488,10 @@ export function App() {
           renderer.runRenderLoop(() => {
             try {
               if (wardrobeRef.current) return;
+              if (cseRef.current) {
+                cseRef.current.scene.render();
+                return;
+              }
               entrance.render();
               const marker = mapMarkerRef.current;
               const pose = marker && session.mapPose();
@@ -401,6 +504,12 @@ export function App() {
                 }
               }
             } catch (error) {
+              if (cseRef.current) {
+                console.error("Unable to render the CSE interior.", error);
+                exitCseRef.current();
+                setCseError(true);
+                return;
+              }
               renderer.stopRenderLoop();
               reportFailure(error);
             }
@@ -420,9 +529,12 @@ export function App() {
     void start(canvas);
     return () => {
       disposed = true;
+      engineRef.current = null;
       sessionRef.current = null;
       resizeObserver?.disconnect();
       engine?.stopRenderLoop();
+      cseRef.current?.scene.dispose();
+      cseRef.current = null;
       scene?.dispose();
       engine?.dispose();
     };
@@ -434,14 +546,35 @@ export function App() {
         <div className="wordmark">GTA <span>MMMUT</span></div>
         <div className="header-actions">
           <div className="header-label">CAMPUS PREVIEW <span> / </span> 10</div>
-          <button type="button" className="view-toggle settings-toggle" disabled={state !== "ready"}
+          <button type="button" className="view-toggle settings-toggle" disabled={state !== "ready" || loadingCse}
             onClick={() => toggleWardrobe(true)}>Wardrobe</button>
-          <button type="button" className="view-toggle settings-toggle" onClick={() => toggleSettings(true)}>
+          <button type="button" className="view-toggle settings-toggle" disabled={loadingCse} onClick={() => toggleSettings(true)}>
             Settings
           </button>
         </div>
       </header>
       <div className="workspace">
+        {insideCse ? (
+          <section className="panel">
+            <h1>CSE Department</h1>
+            <p>{cseLocation?.section ?? "New CSE"} · {cseLocation?.floor === 1 ? "First floor" : "Ground floor"}</p>
+            {cseLocation?.room && <p className="cse-current-room">{cseLocation.room.label}</p>}
+            <div className="view-options">
+              <button className="view-toggle walk-toggle" type="button" onClick={exitCse}>
+                Exit to campus {csePlayerStatus.portalNearby && <kbd>E</kbd>}
+              </button>
+            </div>
+            <select className="detail-picker" aria-label="Interior camera" value={csePlayerStatus.camera}
+              onChange={(event) => {
+                cseRef.current?.setCamera(event.currentTarget.value as PlayerCamera);
+                canvasRef.current?.focus({ preventScroll: true });
+              }}>
+              {Object.entries(playerCameras).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+            </select>
+            <p className="cse-directions">Follow the corridor to Old CSE. Use the stairs on the left in New CSE to change floors.</p>
+            {cseRef.current && <CseDirectory rooms={cseRef.current.rooms} />}
+          </section>
+        ) : (
         <section className="panel">
           <div className="eyebrow"><span className="index">10</span> CAMPUS PLAY</div>
           <h1>Explore campus</h1>
@@ -554,15 +687,24 @@ export function App() {
               </button>
             </div>
           )}
+          {canEnterCse && (
+            <div className="vehicle-panel">
+              <button className="view-toggle walk-toggle" type="button" disabled={loadingCse} onClick={() => void enterCse()}>
+                {loadingCse ? "Opening CSE…" : "Enter CSE"} {walking && <kbd>E</kbd>}
+              </button>
+            </div>
+          )}
+          {cseError && <p role="alert">Unable to open CSE. Try again from the building view.</p>}
           <p className="coverage-note">
             <strong>{campusBuildings.length} of {confirmedBuildings}</strong> confirmed structure IDs mapped
           </p>
           <p className="scale-note">Route alignment, building dimensions, and map scale are provisional.</p>
         </section>
+        )}
         <section className={showMinimap ? "viewport viewport-tracking" : "viewport"} aria-label="Entrance viewer">
           <canvas
             ref={canvasRef}
-            aria-label="3D campus entrance preview"
+            aria-label={insideCse ? "3D CSE interior" : "3D campus entrance preview"}
             aria-hidden={showMap}
             className={showMap ? "canvas-hidden" : undefined}
             tabIndex={showMap ? -1 : 0}
@@ -570,11 +712,13 @@ export function App() {
           {showMap && <EntranceMap playerPoint={mapPlayerPoint} />}
           {showMinimap && <EntranceMap markerRef={mapMarkerRef} />}
           <div className="viewer-label">
-            {showMap ? "PLAN VIEW" : walking && playerStatus.vehicle ? "VEHICLE CHASE" : cameraLabels[cameraView]}
+            {insideCse ? "CSE INTERIOR" : showMap ? "PLAN VIEW" : walking && playerStatus.vehicle ? "VEHICLE CHASE" : cameraLabels[cameraView]}
           </div>
           {!showMap && state === "ready" && settings.showControlHints && (
             <div className="controls">
-              {walking
+              {insideCse
+                ? "WASD move · Arrows look · Shift sprint · V camera · R return to lobby"
+                : walking
                 ? playerStatus.vehicle ? playerStatus.vehicleKind === "car"
                   ? "W/S accelerate and reverse · A/D steer · Space brake · E exit"
                   : "W accelerate · S or Space brake · A/D steer · E exit"
@@ -583,7 +727,7 @@ export function App() {
             </div>
           )}
           <div className="viewer-status" role="status" data-state={state}>
-            {state === "ready" && "3D preview ready"}
+            {state === "ready" && (loadingCse ? "Opening CSE…" : insideCse ? "CSE interior ready" : "3D preview ready")}
             {state === "loading" && "Loading 3D preview…"}
             {state === "unavailable" && "3D preview unavailable. Showing plan view."}
           </div>

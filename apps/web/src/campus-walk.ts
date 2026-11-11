@@ -15,6 +15,15 @@ const movementKeys = new Set([
 ]);
 const cameraModes = Object.keys(playerCameras) as PlayerCamera[];
 
+interface WalkOptions {
+  readonly spawn?: readonly [x: number, y: number, z: number];
+  readonly indoor?: boolean;
+  readonly portal?: {
+    contains(position: WorldGroundPoint, height: number): boolean;
+    interact(): void;
+  };
+}
+
 function angleDifference(from: number, to: number) {
   return Math.atan2(Math.sin(to - from), Math.cos(to - from));
 }
@@ -24,12 +33,13 @@ export function createCampusWalk(
   canvas: HTMLCanvasElement,
   [gateX, gateZ]: WorldGroundPoint,
   extent: readonly WorldGroundPoint[],
-  raisedGroundAt: (x: number, z: number) => number | undefined,
-  vehicles: ReturnType<typeof createCampusVehicles>,
+  raisedGroundAt: (x: number, z: number, currentY: number) => number | undefined,
+  vehicles: ReturnType<typeof createCampusVehicles> | null,
   onStatus: (status: PlayerStatus) => void,
+  walkOptions: WalkOptions = {},
 ) {
   const player = new Mesh("walk-player", scene);
-  const spawn = new Vector3(gateX, groundHeight, gateZ + 4);
+  const spawn = new Vector3(...(walkOptions.spawn ?? [gateX, groundHeight, gateZ + 4]));
   player.position.copyFrom(spawn);
   player.ellipsoid.set(0.33, 0.83, 0.33);
   player.ellipsoidOffset.y = 0.83;
@@ -46,11 +56,12 @@ export function createCampusWalk(
 
   const xs = extent.map(([x]) => x);
   const zs = extent.map(([, z]) => z);
-  const minX = Math.min(...xs) - 12;
-  const maxX = Math.max(...xs) + 12;
-  const minZ = Math.min(...zs) - 12;
-  const maxZ = Math.max(...zs) + 12;
-  const floorAt = (x: number, z: number) => raisedGroundAt(x, z) ?? groundHeight;
+  const margin = walkOptions.indoor ? 0 : 12;
+  const minX = Math.min(...xs) - margin;
+  const maxX = Math.max(...xs) + margin;
+  const minZ = Math.min(...zs) - margin;
+  const maxZ = Math.max(...zs) + margin;
+  const floorAt = (x: number, z: number, y: number) => raisedGroundAt(x, z, y) ?? groundHeight;
 
   let active = false;
   let paused = false;
@@ -60,7 +71,7 @@ export function createCampusWalk(
   let jumpAge = 0;
   let landing = 0;
   let verticalSpeed = 0;
-  let mode: PlayerCamera = "follow";
+  let mode: PlayerCamera = walkOptions.indoor ? "first" : "follow";
   let shoulderSide = 1;
   let reducedMotion = false;
   let nearby: VehicleState | null = null;
@@ -82,7 +93,7 @@ export function createCampusWalk(
     player.ellipsoidOffset.y = player.ellipsoid.y;
   }
 
-  function configureCamera(vehicle: VehicleState | null = vehicles.active()) {
+  function configureCamera(vehicle: VehicleState | null = vehicles?.active() ?? null) {
     const first = !vehicle && mode === "first";
     const distance = vehicle?.chaseDistance ?? { follow: 5.2, shoulder: 2.65, wide: 8, first: 0.075 }[mode];
     camera.lowerRadiusLimit = first ? distance : vehicle ? 3 : 1.5;
@@ -114,8 +125,9 @@ export function createCampusWalk(
     const eye = vehicle ? 1.12 : mode === "first" ? (crouching ? 1.16 : 1.61) : crouching ? 0.97 : 1.27;
     camera.target.set(x + Math.sin(camera.alpha) * shoulder, y + eye, z - Math.cos(camera.alpha) * shoulder);
     const status: PlayerStatus = { camera: mode, vehicle: vehicle?.label ?? null, vehicleKind: vehicle?.kind ?? null, nearby: nearby?.label ?? null,
+      portalNearby: !vehicle && (walkOptions.portal?.contains([x, z], y) ?? false),
       speed: vehicle ? Math.round(Math.abs(vehicle.speed) * 3.6) : 0 };
-    const key = `${status.camera}/${status.vehicle}/${status.vehicleKind}/${status.nearby}/${status.speed}`;
+    const key = `${status.camera}/${status.vehicle}/${status.vehicleKind}/${status.nearby}/${status.portalNearby}/${status.speed}`;
     if (key !== previousStatus) {
       previousStatus = key;
       onStatus(status);
@@ -124,17 +136,23 @@ export function createCampusWalk(
 
   function interact() {
     if (!active || paused) return;
-    const occupied = vehicles.active();
+    const occupied = vehicles?.active();
     if (occupied) {
-      const exit = vehicles.exit();
+      const exit = vehicles?.exit();
       if (!exit) return;
-      player.position.set(exit[0], floorAt(...exit), exit[1]);
+      player.position.set(exit[0], floorAt(exit[0], exit[1], player.position.y), exit[1]);
       avatar.visual.position.setAll(0);
       grounded = true;
       canvas.removeAttribute("data-player-vehicle");
     } else {
-      nearby = vehicles.nearby([player.position.x, player.position.z]);
-      if (!nearby || !vehicles.enter(nearby.id)) return;
+      const position: WorldGroundPoint = [player.position.x, player.position.z];
+      if (walkOptions.portal?.contains(position, player.position.y)) {
+        clearInput();
+        walkOptions.portal.interact();
+        return;
+      }
+      nearby = vehicles?.nearby(position) ?? null;
+      if (!nearby || !vehicles?.enter(nearby.id)) return;
       canvas.dataset.playerVehicle = nearby.id;
       nearby = null;
     }
@@ -147,7 +165,7 @@ export function createCampusWalk(
   function setCamera(next: PlayerCamera) {
     mode = next;
     configureCamera();
-    if (active) publish(vehicles.active());
+    if (active) publish(vehicles?.active() ?? null);
   }
 
   canvas.addEventListener("keydown", (event) => {
@@ -155,7 +173,7 @@ export function createCampusWalk(
     const { code } = event;
     if (!movementKeys.has(code) && !["KeyC", "KeyE", "KeyV", "KeyX", "KeyR"].includes(code)) return;
     event.preventDefault();
-    const occupied = vehicles.active();
+    const occupied = vehicles?.active();
     if (movementKeys.has(code)) keys.add(code);
     if (event.repeat) return;
     if (code === "KeyE") interact();
@@ -201,7 +219,8 @@ export function createCampusWalk(
     const moveZ = -Math.sin(yaw) * forward - Math.cos(yaw) * side;
     const slow = keys.has("KeyZ");
     const running = keys.has("ShiftLeft") || keys.has("ShiftRight");
-    const speed = (crouching ? 1.7 : slow ? 2.1 : running ? 7.5 : 4.2) / Math.max(1, Math.hypot(forward, side));
+    const pace = crouching ? 1.7 : slow ? 2.1 : running ? 7.5 : 4.2;
+    const speed = Math.min(pace, walkOptions.indoor ? (running ? 4.6 : 2.8) : pace) / Math.max(1, Math.hypot(forward, side));
     const steps = Math.max(1, Math.ceil(elapsed * 60));
     const dt = elapsed / steps;
     landing = Math.max(0, landing - elapsed);
@@ -213,14 +232,14 @@ export function createCampusWalk(
       const { x, y, z } = player.position;
       const nextX = Math.max(minX, Math.min(maxX, x + velocity.x * dt));
       const nextZ = Math.max(minZ, Math.min(maxZ, z + velocity.z * dt));
-      const nextFloor = floorAt(nextX, nextZ);
+      const nextFloor = floorAt(nextX, nextZ, y);
       if (!grounded || y > nextFloor + 0.001) verticalSpeed -= 10.5 * dt;
       const nextY = Math.max(nextFloor, y + verticalSpeed * dt);
       displacement.set(nextX - x, nextY - y, nextZ - z);
       if (displacement.lengthSquared() < 1e-8) continue;
       player.moveWithCollisions(displacement);
       const wasGrounded = grounded;
-      const floor = floorAt(player.position.x, player.position.z);
+      const floor = floorAt(player.position.x, player.position.z, player.position.y);
       grounded = player.position.y <= floor + 0.001 || (displacement.y < 0 && player.position.y > nextY + 0.001);
       if (grounded) {
         if (!wasGrounded && jumpAge > 0.18) landing = 0.21;
@@ -238,16 +257,16 @@ export function createCampusWalk(
     if (!grounded) action = jumpAge < 0.16 ? "takeoff" : "air";
     else if (landing > 0) action = "land";
     else if (crouching) action = actualSpeed > 0.3 ? "sneak" : "crouch";
-    else action = actualSpeed < 0.32 ? "idle" : slow ? "walk" : running ? "sprint" : "jog";
+    else action = actualSpeed < 0.32 ? "idle" : running && !slow ? "sprint" : slow || walkOptions.indoor ? "walk" : "jog";
     const moving = action === "walk" || action === "jog" || action === "sprint" || action === "sneak";
     avatar.animate(action, moving ? Math.max(0.7, Math.min(1.45, actualSpeed / speed)) : 1);
-    nearby = vehicles.nearby([player.position.x, player.position.z]);
+    nearby = vehicles?.nearby([player.position.x, player.position.z]) ?? null;
   }
 
   scene.onBeforeRenderObservable.add(() => {
     if (!active) return;
     const elapsed = Math.min(scene.getEngine().getDeltaTime() / 1000, 0.12);
-    let occupied = vehicles.active();
+    let occupied = vehicles?.active() ?? null;
     if (paused) {
       avatar.animate(occupied ? "ride" : "idle");
       return;
@@ -258,7 +277,7 @@ export function createCampusWalk(
     const tilt = Number(keys.has("ArrowUp")) - Number(keys.has("ArrowDown"));
     camera.alpha += turn * elapsed * 1.4;
     camera.beta = Math.min(camera.upperBetaLimit!, Math.max(camera.lowerBetaLimit!, camera.beta + tilt * elapsed * 1.1));
-    if (occupied) {
+    if (occupied && vehicles) {
       vehicles.update(elapsed, { throttle: forward, steer: side, brake: keys.has("Space") });
       occupied = vehicles.active()!;
       player.position.set(occupied.position[0], groundHeight, occupied.position[1]);
@@ -304,7 +323,7 @@ export function createCampusWalk(
         scene.activeCamera = camera;
         camera.attachControl(false);
         canvas.dataset.cameraView = "walk";
-        publish(vehicles.active());
+        publish(vehicles?.active() ?? null);
       } else {
         camera.detachControl();
         stopInput();
@@ -313,6 +332,9 @@ export function createCampusWalk(
     setPaused(value: boolean) {
       paused = value;
       if (value) stopInput();
+    },
+    worldPosition() {
+      return active ? player.position : null;
     },
     mapPose() {
       if (!started) return null;

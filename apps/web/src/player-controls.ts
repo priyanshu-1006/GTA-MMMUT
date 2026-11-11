@@ -14,5 +14,6 @@ export interface PlayerStatus {
   vehicle: string | null;
   vehicleKind: VehicleState["kind"] | null;
   nearby: string | null;
+  portalNearby: boolean;
   speed: number;
 }
