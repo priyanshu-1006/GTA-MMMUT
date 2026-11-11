@@ -16,6 +16,7 @@ import type { createBuildingInteriorScene, InteriorLocation } from "./building-i
 import { buildingInteriors, interiorForView, type InteriorId } from "./building-interiors";
 import type { CseRoom } from "./cse-interior-layout";
 import { GameSettingsPanel, loadGameSettings, saveGameSettings, type GameSettings } from "./game-settings";
+import { HomeScreen, type HomeMode } from "./home-screen";
 import { loadPlayerAppearance, savePlayerAppearance, type PlayerAppearance } from "./player-appearance";
 import { playerCameras, type PlayerCamera, type PlayerStatus } from "./player-controls";
 import { PlayerWardrobe } from "./player-wardrobe";
@@ -337,7 +338,33 @@ const initialPlayerStatus: PlayerStatus = {
   camera: "follow", vehicle: null, vehicleKind: null, nearby: null, portalNearby: null, speed: 0,
 };
 
+function modeFromLocation(): HomeMode | null {
+  const mode = new URLSearchParams(window.location.search).get("mode");
+  return mode === "tour" || mode === "play" ? mode : null;
+}
+
 export function App() {
+  const [mode, setMode] = useState(modeFromLocation);
+  useEffect(() => {
+    const syncLocation = () => setMode(modeFromLocation());
+    window.addEventListener("popstate", syncLocation);
+    return () => window.removeEventListener("popstate", syncLocation);
+  }, []);
+
+  function navigate(next: HomeMode | null) {
+    const url = new URL(window.location.href);
+    if (next) url.searchParams.set("mode", next);
+    else url.searchParams.delete("mode");
+    window.history.pushState(null, "", url);
+    setMode(next);
+  }
+
+  if (!mode) return <HomeScreen onSelect={navigate} />;
+  return <CampusExperience key={mode} mode={mode} onHome={() => navigate(null)} />;
+}
+
+function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void }) {
+  const shellRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapMarkerRef = useRef<SVGGElement>(null);
   const sessionRef = useRef<ReturnType<typeof createEntranceScene> | null>(null);
@@ -348,7 +375,7 @@ export function App() {
   const exitBuildingRef = useRef<() => void>(() => {});
   const [state, setState] = useState<PreviewState>("loading");
   const [mapOpen, setMapOpen] = useState(false);
-  const [cameraView, setCameraView] = useState<EntranceView>("entrance");
+  const [cameraView, setCameraView] = useState<EntranceView>(mode === "play" ? "walk" : "buildings");
   const [mapPlayerPoint, setMapPlayerPoint] = useState<AnnotationPoint | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState(loadGameSettings);
@@ -363,6 +390,8 @@ export function App() {
   const [insideBuilding, setInsideBuilding] = useState<InteriorId | null>(null);
   const [loadingInterior, setLoadingInterior] = useState<InteriorId | null>(null);
   const [interiorError, setInteriorError] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState(false);
   const showMap = mapOpen || state === "unavailable";
   const overviewActive = !showMap && cameraView === "network";
   const buildingsActive = !showMap && buildingViews.some(({ view }) => view === cameraView);
@@ -443,10 +472,22 @@ export function App() {
   }
 
   function toggleMap() {
-    if (interiorLoadingRef.current) return;
+    if (interiorLoadingRef.current || state !== "ready") return;
     if (!mapOpen) setMapPlayerPoint(sessionRef.current?.mapPose()?.point ?? null);
-    sessionRef.current?.setWalkPaused(!mapOpen);
+    setPlayPaused(!mapOpen || settingsOpen || wardrobeOpen);
     setMapOpen(!mapOpen);
+  }
+
+  async function toggleFullscreen() {
+    const shell = shellRef.current;
+    if (!shell) return;
+    setFullscreenError(false);
+    try {
+      if (document.fullscreenElement === shell) await document.exitFullscreen();
+      else await shell.requestFullscreen();
+    } catch {
+      setFullscreenError(true);
+    }
   }
 
   function toggleSettings(open: boolean) {
@@ -483,7 +524,32 @@ export function App() {
 
   useEffect(() => {
     if ((walking || insideBuilding) && !showMap && !settingsOpen && !wardrobeOpen) canvasRef.current?.focus({ preventScroll: true });
-  }, [walking, insideBuilding, showMap, settingsOpen, wardrobeOpen]);
+  }, [walking, insideBuilding, showMap, settingsOpen, wardrobeOpen, fullscreen]);
+
+  useEffect(() => {
+    const syncFullscreen = () => setFullscreen(document.fullscreenElement === shellRef.current);
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
+
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      const target = event.target;
+      if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey ||
+        settingsOpen || wardrobeOpen || (target instanceof HTMLElement &&
+          (target.isContentEditable || target.matches("input, textarea, select")))) return;
+      if (event.code === "KeyM" || (event.code === "Escape" && mapOpen && !document.fullscreenElement)) {
+        event.preventDefault();
+        toggleMap();
+      }
+      if (event.code === "KeyF") {
+        event.preventDefault();
+        void toggleFullscreen();
+      }
+    }
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [mapOpen, settingsOpen, wardrobeOpen, state]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -512,6 +578,7 @@ export function App() {
         sessionRef.current = session;
         session.setSettings(settingsRef.current);
         session.setPlayerAppearance(appearanceRef.current);
+        if (cameraView !== "walk") session.setView(cameraView);
         resizeObserver = new ResizeObserver(() => renderer.resize());
         resizeObserver.observe(target);
         entrance.executeWhenReady(() => {
@@ -541,11 +608,15 @@ export function App() {
                 setInteriorError(true);
                 return;
               }
+              session.suspend();
               renderer.stopRenderLoop();
               reportFailure(error);
             }
           });
-          entrance.onAfterRenderObservable.addOnce(() => setState("ready"));
+          entrance.onAfterRenderObservable.addOnce(() => {
+            if (cameraView === "walk") session.setView("walk");
+            setState("ready");
+          });
         });
       } catch (error) {
         if (!disposed) reportFailure(error);
@@ -572,11 +643,21 @@ export function App() {
   }, []);
 
   return (
-    <main className="shell">
+    <main className="shell" ref={shellRef}>
       <header className="site-header">
-        <div className="wordmark">GTA <span>MMMUT</span></div>
+        <button type="button" className="site-brand" onClick={onHome} aria-label="GTA MMMUT home">
+          <span className="wordmark">GTA <span>MMMUT</span></span>
+          <span className="brand-credit">Built by Priyanshu Chaurasia</span>
+        </button>
         <div className="header-actions">
-          <div className="header-label">CAMPUS PREVIEW <span> / </span> 10</div>
+          <button type="button" className="view-toggle settings-toggle" aria-pressed={showMap} aria-keyshortcuts="M"
+            disabled={state !== "ready" || Boolean(loadingInterior)} onClick={toggleMap}>
+            Map overlay <kbd aria-hidden="true">M</kbd>
+          </button>
+          <button type="button" className="view-toggle settings-toggle" aria-pressed={fullscreen} aria-keyshortcuts="F"
+            onClick={() => void toggleFullscreen()}>
+            {fullscreen ? "Exit fullscreen" : "Fullscreen"} <kbd aria-hidden="true">F</kbd>
+          </button>
           <button type="button" className="view-toggle settings-toggle" disabled={state !== "ready" || Boolean(loadingInterior)}
             onClick={() => toggleWardrobe(true)}>Wardrobe</button>
           <button type="button" className="view-toggle settings-toggle" disabled={Boolean(loadingInterior)} onClick={() => toggleSettings(true)}>
@@ -608,9 +689,8 @@ export function App() {
           </section>
         ) : (
         <section className="panel">
-          <div className="eyebrow"><span className="index">10</span> CAMPUS PLAY</div>
           <h1>Explore campus</h1>
-          <p>Enter through the main gate, follow the covered paths, and inspect the campus façades.</p>
+          <p>{walking ? "Walk the campus, enter marked buildings, or take a drive." : "Choose a building to inspect or switch to player mode."}</p>
           <div className="view-options" role="group" aria-label="Preview views">
             <button
               type="button"
@@ -658,18 +738,6 @@ export function App() {
               onClick={() => changeView(!showMap && cameraView === "walkway" ? "entrance" : "walkway")}
             >
               Covered walkway
-            </button>
-            <button
-              type="button"
-              className="view-toggle"
-              aria-pressed={showMap}
-              disabled={state === "unavailable"}
-              onClick={toggleMap}
-            >
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2zm6-2v14m6-12v14" />
-              </svg>
-              Map overlay
             </button>
           </div>
           {buildingsActive && (
@@ -744,8 +812,14 @@ export function App() {
           {showMap && <EntranceMap playerPoint={mapPlayerPoint} />}
           {showMinimap && <EntranceMap markerRef={mapMarkerRef} />}
           <div className="viewer-label">
-            {currentInterior ? `${currentInterior.entryName.toUpperCase()} INTERIOR` : showMap ? "PLAN VIEW" : walking && playerStatus.vehicle ? "VEHICLE CHASE" : cameraLabels[cameraView]}
+            {showMap ? "PLAN VIEW" : currentInterior ? `${currentInterior.entryName.toUpperCase()} INTERIOR` : walking && playerStatus.vehicle ? "VEHICLE CHASE" : cameraLabels[cameraView]}
           </div>
+          {!showMap && (state === "loading" || loadingInterior) && (
+            <div className="viewer-loading" data-loading={loadingInterior ? "interior" : "campus"} aria-hidden="true">
+              <span className="loading-spinner" />
+              <strong>{loadingInterior ? `Loading ${buildingInteriors[loadingInterior].entryName}` : "Loading the campus"}</strong>
+            </div>
+          )}
           {!showMap && state === "ready" && settings.showControlHints && (
             <div className="controls">
               {insideBuilding
@@ -763,6 +837,7 @@ export function App() {
             {state === "loading" && "Loading 3D preview…"}
             {state === "unavailable" && "3D preview unavailable. Showing plan view."}
           </div>
+          {fullscreenError && <p className="fullscreen-error" role="alert">This browser did not allow fullscreen. Try the browser’s fullscreen command.</p>}
         </section>
       </div>
       {settingsOpen && (

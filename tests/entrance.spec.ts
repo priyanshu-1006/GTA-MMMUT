@@ -26,6 +26,38 @@ function walkTo(canvas: Locator, keys: string[], axis: "x" | "z", target: number
   }), { keys, axis, target, direction, timeout });
 }
 
+test("launches player mode and building tours from the credited homepage", async ({ page }, testInfo) => {
+  test.setTimeout(105_000);
+  await page.addInitScript(() => {
+    if (location.protocol === "http:") localStorage.setItem("gta-mmmut.settings.v1", JSON.stringify({ renderQuality: "low" }));
+  });
+  await page.goto("/");
+  await expect(page.getByText("Built by Priyanshu Chaurasia", { exact: true })).toBeVisible();
+  await expect(page.locator("canvas")).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("homepage.png") });
+  await page.getByRole("button", { name: "Play as a Player", exact: true }).click();
+  await expect(page).toHaveURL(/\?mode=play$/);
+  const canvas = page.getByLabel("3D campus entrance preview", { exact: true });
+  await expect(page.getByRole("status")).toHaveText("3D preview ready", { timeout: 35_000 });
+  await expect(canvas).toHaveAttribute("data-camera-view", "walk");
+  await expect(canvas).toBeFocused();
+  await page.keyboard.press("m");
+  await expect(page.getByRole("img", { name: "Campus reference map" })).toBeVisible();
+  await page.keyboard.press("m");
+  await expect(canvas).toBeFocused();
+  await page.keyboard.press("f");
+  await expect(page.getByRole("button", { name: "Exit fullscreen", exact: true })).toBeVisible();
+  await expect(canvas).toBeFocused();
+  await page.keyboard.press("f");
+  await expect(page.getByRole("button", { name: "Fullscreen", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "GTA MMMUT home", exact: true }).click();
+  await page.getByRole("button", { name: "Building Tour", exact: true }).click();
+  await expect(page).toHaveURL(/\?mode=tour$/);
+  await expect(page.getByRole("status")).toHaveText("3D preview ready", { timeout: 35_000 });
+  await expect(canvas).toHaveAttribute("data-camera-view", "buildings");
+  await expect(page.getByRole("combobox", { name: "Building to inspect" })).toBeVisible();
+});
+
 test("renders the southern entrance, walks through the gate, and opens the map", async ({
   page,
 }, testInfo) => {
@@ -35,7 +67,7 @@ test("renders the southern entrance, walks through the gate, and opens the map",
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
-  await page.goto("/");
+  await page.goto("/?mode=tour");
   await expect(page.getByRole("heading", { name: "Explore campus", exact: true }))
     .toBeVisible();
 
@@ -271,7 +303,7 @@ test("applies both skin packs and changes player camera", async ({ page }, testI
   });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/");
+  await page.goto("/?mode=tour");
   const canvas = page.getByLabel("3D campus entrance preview", { exact: true });
   await expect(page.getByRole("status")).toHaveText("3D preview ready", { timeout: 35_000 });
 
@@ -340,7 +372,7 @@ test("drives and exits the Swift Dzire at the main gate", async ({ page }) => {
   });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/");
+  await page.goto("/?mode=tour");
   const canvas = page.getByLabel("3D campus entrance preview", { exact: true });
   await expect(page.getByRole("status")).toHaveText("3D preview ready", { timeout: 35_000 });
   await page.getByRole("button", { name: "Walk campus", exact: true }).press("Enter");
@@ -374,7 +406,7 @@ test("loads the Alto 800 and Scorpio in TNP parking", async ({ page }, testInfo)
   page.on("console", (message) => {
     if (message.text().startsWith("Could not load")) modelErrors.push(message.text());
   });
-  await page.goto("/");
+  await page.goto("/?mode=tour");
   await expect(page.getByRole("status")).toHaveText("3D preview ready", { timeout: 35_000 });
   await page.getByRole("button", { name: "Main gate", exact: true }).press("Enter");
 
@@ -407,9 +439,8 @@ test("opens the marked entrance before crossing into each new interior", async (
   });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/");
+  await page.goto("/?mode=tour");
   await expect(page.getByRole("status")).toHaveText("3D preview ready", { timeout: 35_000 });
-  await page.getByRole("button", { name: "Building view", exact: true }).click();
   const building = page.getByRole("combobox", { name: "Building to inspect" });
   const outdoor = page.getByLabel("3D campus entrance preview", { exact: true });
   await outdoor.evaluate((canvas) => {
@@ -462,9 +493,8 @@ test("enters CSE, visits both floors and wings, and returns outdoors", async ({ 
   });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/");
+  await page.goto("/?mode=tour");
   await expect(page.getByRole("status")).toHaveText("3D preview ready", { timeout: 35_000 });
-  await page.getByRole("button", { name: "Building view" }).click();
   const building = page.getByRole("combobox", { name: "Building to inspect" });
   await building.selectOption("cse");
   await page.getByRole("button", { name: "Enter CSE", exact: true }).click();
@@ -519,7 +549,7 @@ test("previews the frontage, campus access roads, and landmarks", async ({ page 
       console.error(message.text());
     }
   });
-  await page.goto("/");
+  await page.goto("/?mode=tour");
   const canvas = page.getByLabel("3D campus entrance preview", { exact: true });
   const status = page.getByRole("status");
   await expect(status).toHaveText("3D preview ready", { timeout: 35_000 });

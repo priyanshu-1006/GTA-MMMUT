@@ -1,0 +1,20 @@
+{
+  "name": "gta-mmmut-teaser",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare-media": "node scripts/prepare-media.mjs",
+    "studio": "remotion studio src/index.tsx",
+    "render": "node scripts/render.mjs"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "1.1.0",
+    "@ffprobe-installer/ffprobe": "2.1.2",
+    "@fontsource/archivo-black": "5.2.8",
+    "@fontsource/barlow": "5.2.8",
+    "@remotion/cli": "^4.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.0"
+  }
+}

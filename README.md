@@ -1,8 +1,10 @@
 # GTA MMMUT
 
+**Built by Priyanshu Chaurasia.** [Copyright notice](COPYRIGHT.md)
+
 GTA MMMUT is a browser-based 3D recreation of the Madan Mohan Malaviya University of Technology campus. The preview includes the southern, western and northern roads, the east paved link, a covered pedestrian network and models for all 48 confirmed structure IDs. That is 48 of 61 registry entries outside the excluded category, including entries with unknown identities or under construction in the denominator. Dimensions, the walkway alignment and vehicle access on the east link remain provisional.
 
-## Run the entrance preview
+## Run the game
 
 Use Node.js 22.12 or newer and pnpm 10.17.1. The browser smoke test uses desktop Google Chrome.
 
@@ -11,7 +13,9 @@ pnpm install --frozen-lockfile
 pnpm dev --host 127.0.0.1
 ```
 
-Open the preview and select **Walk campus**. Use WASD to move, Z to slow to a walk, Shift to sprint, C to crouch, Space to jump, and R to return to the gate. Drag or use the arrow keys to look. Double-click the canvas to capture the mouse, and press Escape to release it. Use **Player camera** or V to change perspective, and X to swap shoulders in the shoulder view. **Map overlay** pauses movement and marks your position. [Local preview](http://127.0.0.1:5173)
+Choose **Building Tour** on the homepage to inspect landmarks or **Play as a Player** to start outside the main gate. Use WASD to move, Z to slow to a walk, Shift to sprint, C to crouch, Space to jump, and R to return to the gate. Drag or use the arrow keys to look. Double-click the canvas to capture the mouse, and press Escape to release it. Use **Player camera** or V to change perspective, and X to swap shoulders in the shoulder view. **M** toggles the map and **F** toggles fullscreen. [Local preview](http://127.0.0.1:5173)
+
+The [teaser project](teaser/README.md) uses scripted in-engine camera moves, Remotion titles and editing, and FFmpeg encoding. Its media and render tools run separately from the game’s Vercel build.
 
 The live minimap shows your position and heading while walking or driving. **Reduce camera motion** also stops the clouds from drifting.
 
