@@ -25,6 +25,7 @@ body { margin: 0; }
   border-bottom: 1px solid #465449;
 }
 
+.site-header-start { display: flex; align-items: center; gap: clamp(0.55rem, 1.4vw, 1.25rem); }
 .site-brand { display: grid; text-align: left; gap: 0.07rem; padding-block: 0.35rem; cursor: pointer; }
 .wordmark { font-size: 1.15rem; font-weight: 800; letter-spacing: -0.045em; }
 .wordmark span { color: #edc678; }
@@ -222,6 +223,11 @@ body { margin: 0; }
   .viewport { min-height: 26rem; }
   .shell:fullscreen .workspace { grid-template-columns: 1fr; }
   .shell:fullscreen .viewport { min-height: 24rem; }
+}
+
+@media (max-width: 560px) {
+  .site-header { align-items: flex-start; flex-direction: column; gap: 0.45rem; padding-block: 0.55rem; }
+  .header-actions { justify-content: flex-start; }
 }
 
 @media (max-width: 465px) {

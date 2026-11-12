@@ -11,6 +11,7 @@
     "@babylonjs/loaders": "9.32.1",
     "@gta-mmmut/world-data": "workspace:*",
     "earcut": "3.0.2",
+    "posthog-js": "^1.447.12",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },

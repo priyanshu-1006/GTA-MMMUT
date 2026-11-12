@@ -16,7 +16,9 @@ import type { createBuildingInteriorScene, InteriorLocation } from "./building-i
 import { buildingInteriors, interiorForView, type InteriorId } from "./building-interiors";
 import type { CseRoom } from "./cse-interior-layout";
 import { GameSettingsPanel, loadGameSettings, saveGameSettings, type GameSettings } from "./game-settings";
-import { HomeScreen, type HomeMode } from "./home-screen";
+import { HomeScreen, TeaserLink, type HomeMode } from "./home-screen";
+import { campusAnalyticsEnabled, countCampusVisit, trackCampusEvent, watchCampusExploration, type ExplorationLocation } from "./campus-analytics";
+import { campusAreaAt } from "./campus-analytics-areas";
 import { loadPlayerAppearance, savePlayerAppearance, type PlayerAppearance } from "./player-appearance";
 import { playerCameras, type PlayerCamera, type PlayerStatus } from "./player-controls";
 import { PlayerWardrobe } from "./player-wardrobe";
@@ -346,6 +348,7 @@ function modeFromLocation(): HomeMode | null {
 export function App() {
   const [mode, setMode] = useState(modeFromLocation);
   useEffect(() => {
+    countCampusVisit(mode ?? "home");
     const syncLocation = () => setMode(modeFromLocation());
     window.addEventListener("popstate", syncLocation);
     return () => window.removeEventListener("popstate", syncLocation);
@@ -359,7 +362,7 @@ export function App() {
     setMode(next);
   }
 
-  if (!mode) return <HomeScreen onSelect={navigate} />;
+  if (!mode) return <HomeScreen onSelect={navigate} onTeaserOpen={() => trackCampusEvent("campus_teaser_opened", { from: "home" })} />;
   return <CampusExperience key={mode} mode={mode} onHome={() => navigate(null)} />;
 }
 
@@ -373,6 +376,7 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
   const interiorLoadingRef = useRef(false);
   const enterBuildingRef = useRef<(id: InteriorId) => void>(() => {});
   const exitBuildingRef = useRef<() => void>(() => {});
+  const explorationRef = useRef<() => ExplorationLocation | null>(() => null);
   const [state, setState] = useState<PreviewState>("loading");
   const [mapOpen, setMapOpen] = useState(false);
   const [cameraView, setCameraView] = useState<EntranceView>(mode === "play" ? "walk" : "buildings");
@@ -441,6 +445,7 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
       outdoor.suspend();
       interior.activate();
       setInsideBuilding(id);
+      trackCampusEvent("campus_building_entered", { building: buildingInteriors[id].title });
     } catch (error) {
       interior?.scene.dispose();
       if (engineRef.current !== renderer) return;
@@ -473,7 +478,10 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
 
   function toggleMap() {
     if (interiorLoadingRef.current || state !== "ready") return;
-    if (!mapOpen) setMapPlayerPoint(sessionRef.current?.mapPose()?.point ?? null);
+    if (!mapOpen) {
+      setMapPlayerPoint(sessionRef.current?.mapPose()?.point ?? null);
+      trackCampusEvent("campus_map_opened", { from: insideBuilding ? "interior" : walking ? "play" : "tour" });
+    }
     setPlayPaused(!mapOpen || settingsOpen || wardrobeOpen);
     setMapOpen(!mapOpen);
   }
@@ -521,6 +529,39 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
     enterBuildingRef.current = (id) => { void enterBuilding(id); };
     exitBuildingRef.current = exitBuilding;
   });
+
+  useEffect(() => {
+    if (state === "ready") trackCampusEvent("campus_mode_selected", { mode: walking ? "play" : "tour" });
+  }, [state, walking]);
+
+  useEffect(() => {
+    if (playerStatus.vehicle) trackCampusEvent("campus_vehicle_used", { vehicle: playerStatus.vehicle });
+  }, [playerStatus.vehicle]);
+
+  useEffect(() => {
+    if (!campusAnalyticsEnabled) return;
+    explorationRef.current = () => {
+      if (state !== "ready" || showMap || settingsOpen || wardrobeOpen || loadingInterior) return null;
+      if (currentInterior) {
+        const room = interiorLocation?.room;
+        return { mode: "play", place_type: room ? "room" : "interior",
+          place: room ?? interiorLocation?.section ?? currentInterior.title,
+          building: currentInterior.title, floor: interiorLocation?.floor };
+      }
+      if (walking) {
+        const point = sessionRef.current?.mapPose()?.point;
+        return point ? { mode: "play", place_type: "campus area", place: campusAreaAt(point) } : null;
+      }
+      const place = buildingViews.find(({ view }) => view === cameraView)?.label ??
+        entranceDetails.find(({ view }) => view === cameraView)?.label ?? cameraLabels[cameraView];
+      return { mode: "tour", place_type: "camera view", place };
+    };
+  }, [state, showMap, settingsOpen, wardrobeOpen, loadingInterior, currentInterior, interiorLocation, walking, cameraView]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) return watchCampusExploration(canvas, () => explorationRef.current());
+  }, []);
 
   useEffect(() => {
     if ((walking || insideBuilding) && !showMap && !settingsOpen && !wardrobeOpen) canvasRef.current?.focus({ preventScroll: true });
@@ -645,10 +686,13 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
   return (
     <main className="shell" ref={shellRef}>
       <header className="site-header">
-        <button type="button" className="site-brand" onClick={onHome} aria-label="GTA MMMUT home">
-          <span className="wordmark">GTA <span>MMMUT</span></span>
-          <span className="brand-credit">Built by Priyanshu Chaurasia</span>
-        </button>
+        <div className="site-header-start">
+          <button type="button" className="site-brand" onClick={onHome} aria-label="GTA MMMUT home">
+            <span className="wordmark">GTA <span>MMMUT</span></span>
+            <span className="brand-credit">Built by Priyanshu Chaurasia</span>
+          </button>
+          <TeaserLink onClick={() => trackCampusEvent("campus_teaser_opened", { from: "game" })} />
+        </div>
         <div className="header-actions">
           <button type="button" className="view-toggle settings-toggle" aria-pressed={showMap} aria-keyshortcuts="M"
             disabled={state !== "ready" || Boolean(loadingInterior)} onClick={toggleMap}>

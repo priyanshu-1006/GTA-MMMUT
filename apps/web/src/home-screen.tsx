@@ -21,10 +21,20 @@ const modes = [
   },
 ] as const;
 
-export function HomeScreen({ onSelect }: { onSelect: (mode: HomeMode) => void }) {
+export function TeaserLink({ onClick }: { onClick?: () => void }) {
+  return (
+    <a className="teaser-link" href="https://youtu.be/8IXfY5gI-9Y" target="_blank" rel="noopener noreferrer"
+      onClick={onClick}>
+      Watch teaser
+    </a>
+  );
+}
+
+export function HomeScreen({ onSelect, onTeaserOpen }: { onSelect: (mode: HomeMode) => void; onTeaserOpen?: () => void }) {
   return (
     <main className="home-screen">
       <header className="home-header">
+        <TeaserLink onClick={onTeaserOpen} />
         <span className="home-university">Madan Mohan Malaviya University of Technology</span>
         <span className="home-location">Gorakhpur, India</span>
       </header>

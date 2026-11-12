@@ -54,6 +54,14 @@ Playwright launches its test server on port 5174. Screenshots of the entrance, c
 
 Once the project is connected, Vercel deploys pushes to the production branch. [Vercel Git deployments](https://vercel.com/docs/git)
 
+## Private owner analytics
+
+The game sends anonymous events on `gta.mmmut.app` when analytics is configured. It counts page visits, teaser opens, play and tour starts, building entries, vehicles used, map opens, and time spent in named campus areas, views, and rooms. Time is sampled while the game is in the foreground and excludes paused screens and idle periods. The game sends area names and elapsed seconds. It honors Do Not Track and Global Privacy Control and disables session recordings and automatic click capture.
+
+1. In your own PostHog project, enable cookieless tracking under **Settings → Project → Web analytics**. Keep project access limited to the people who should see the results.
+2. In Vercel, set the Production variables `VITE_POSTHOG_PROJECT_TOKEN` to your project's `phc_` key and `VITE_POSTHOG_REGION` to `us` or `eu`, then redeploy. Use the write-only project key. Your private dashboard credentials stay in PostHog.
+3. Open **Web analytics** for visitors and page views. In **Product analytics → Insights**, break down `campus_place_explored` by `place` or `building`, and sum `active_seconds` on `campus_active_time` by `mode` or `place`. `campus_building_entered` counts completed building entries. [PostHog web analytics](https://posthog.com/docs/web-analytics) · [PostHog Insights](https://posthog.com/docs/product-analytics/insights)
+
 ## Project files
 
 - The entrance and wider road data hold the source-image coordinates, connected centerlines, pavement and provisional world transform. The boundary data hold the southern wall runs and the old gate approach. [Entrance data](packages/world-data/src/southern-entrance.ts) · [Campus roads](packages/world-data/src/campus-roads.ts) · [Campus boundary](packages/world-data/src/campus-boundary.ts)
