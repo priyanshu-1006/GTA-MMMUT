@@ -7,6 +7,7 @@ export const buildingInteriors = {
   nalanda: { title: "Nalanda Lecture Hall Complex", entryName: "Nalanda", view: "nalanda", meshIds: ["B33", "B34", "B35"], directions: "L-103 to L-105 are in the Library wing. L-106 to L-108 are in the Electrical wing." },
   pushpagiri: { title: "Pushpagiri Lecture Hall Complex", entryName: "Pushpagiri", view: "pushpagiri", meshIds: ["B45"], directions: "Use either end staircase to reach the first-floor gallery." },
   takshashila: { title: "Takshashila Lecture Hall Complex", entryName: "Takshashila", view: "takshashila-entry", meshIds: ["B47"], directions: "Follow the gallery around the open courtyard to find the lecture halls and stairs." },
+  cafeteria: { title: "University Cafeteria", entryName: "Cafeteria", view: "cafeteria", meshIds: ["B21"], directions: "Follow the center aisle to the chai counter. The dining tables are on either side." },
 } as const;
 
 export type InteriorId = keyof typeof buildingInteriors;

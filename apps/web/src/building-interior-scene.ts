@@ -25,14 +25,19 @@ interface InteriorLayout {
   floorAt(x: number, z: number, currentY: number): number;
   location(x: number, y: number, z: number): string | InteriorLocation;
   exitNear(x: number, y: number, z: number): boolean;
+  shareChai?(): Promise<boolean>;
 }
 
-async function loadLayout(id: InteriorId): Promise<(scene: Scene) => InteriorLayout> {
+async function loadLayout(id: InteriorId, cafeteriaFriendShirt?: string): Promise<(scene: Scene) => InteriorLayout> {
   if (id === "library") return (await import("./library-interior")).buildLibraryInterior;
   if (id === "hall") return (await import("./mph-interior")).buildMphInterior;
   if (id === "nalanda") return (await import("./nalanda-interior")).buildNalandaInterior;
   if (id === "pushpagiri") return (await import("./pushpagiri-interior")).buildPushpagiriInterior;
   if (id === "takshashila") return (await import("./takshashila-interior")).buildTakshashilaInterior;
+  if (id === "cafeteria") {
+    const { buildCafeteriaInterior } = await import("./cafeteria-interior");
+    return (scene) => buildCafeteriaInterior(scene, cafeteriaFriendShirt);
+  }
 
   const { createCseInteriorGeometry } = await import("./cse-interior-geometry");
   return (scene) => {
@@ -62,8 +67,9 @@ export async function createBuildingInteriorScene(
   onPlayerStatus: (status: PlayerStatus) => void,
   onLocation: (location: InteriorLocation) => void,
   onExit: () => void,
+  { cafeteriaFriendShirt }: { cafeteriaFriendShirt?: string } = {},
 ) {
-  const build = await loadLayout(id);
+  const build = await loadLayout(id, cafeteriaFriendShirt);
   const scene = new Scene(engine);
   scene.useRightHandedSystem = true;
   scene.collisionsEnabled = true;
@@ -91,6 +97,8 @@ export async function createBuildingInteriorScene(
       portal: { at: ([x, z], y) => layout.exitNear(x, y, z) ? "exit" : null, interact: onExit },
     });
   walk.camera.maxZ = 140;
+  let paused = false;
+  let sharingChai = false;
   let lastLocation = "";
   scene.onAfterRenderObservable.add(() => {
     const player = walk.worldPosition();
@@ -124,7 +132,26 @@ export async function createBuildingInteriorScene(
       canvas.dataset.cameraView = `${id}-interior`;
       canvas.dataset.interiorId = id;
     },
-    setPaused: walk.setPaused,
+    setPaused(value: boolean) {
+      paused = value;
+      walk.setPaused(paused || sharingChai);
+    },
+    async shareChai() {
+      const player = walk.worldPosition();
+      if (!player || !layout.shareChai || paused || sharingChai) return false;
+      const location = layout.location(player.x, player.y, player.z);
+      if (typeof location === "string" || location.roomId !== "cafeteria-chai") return false;
+      sharingChai = true;
+      walk.setPaused(true);
+      canvas.dataset.cafeteriaActivity = "sharing-chai";
+      try {
+        return await layout.shareChai();
+      } finally {
+        sharingChai = false;
+        if (!scene.isDisposed) walk.setPaused(paused);
+        delete canvas.dataset.cafeteriaActivity;
+      }
+    },
     setAppearance: walk.setAppearance,
     setCamera: walk.setCamera,
     setSettings({ lookSensitivity, invertY, reducedMotion, fieldOfView }: GameSettings) {

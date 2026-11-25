@@ -3,10 +3,12 @@ import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Scene } from "@babylonjs/core/scene";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { createBuildingInteriorScene } from "../src/building-interior-scene";
 import type { InteriorId } from "../src/building-interiors";
 import { createEntranceScene, type EntranceView } from "../src/entrance-scene";
 import { defaultGameSettings } from "../src/game-settings";
+import { bulletShortNames, setupBulletShort } from "./bullet-short";
 
 type Position = readonly [x: number, y: number, z: number];
 
@@ -22,6 +24,8 @@ type Shot =
   | { view: EntranceView; orbit?: number; push?: number; elevate?: number }
   | { interior: InteriorId; move: CameraMove }
   | { action: "player" | "traffic" }
+  | { drive: "window" | "chase" }
+  | { chant: 1 | 2 }
   | { move: CameraMove };
 
 const shots: Record<string, Shot> = {
@@ -39,6 +43,9 @@ const shots: Record<string, Shot> = {
   walkway: { view: "walkway", orbit: 0.015, push: 0.04 },
   player: { action: "player" },
   traffic: { action: "traffic" },
+  "student-chant": { chant: 1 },
+  "player-drive": { drive: "window" },
+  "player-drive-chase": { drive: "chase" },
   "cse-exterior": { view: "cse", orbit: -0.13 },
   "cse-complex": { view: "cse-complex", orbit: 0.20 },
   civil: { view: "civil", orbit: 0.16 },
@@ -70,7 +77,7 @@ const noop = () => {};
 let outdoor: ReturnType<typeof createEntranceScene> | undefined;
 let indoor: Awaited<ReturnType<typeof createBuildingInteriorScene>> | undefined;
 let freeCamera: FreeCamera | undefined;
-let activeShot: { scene: Scene; frame(progress: number): void; finish(): void } | undefined;
+let activeShot: { scene: Scene; driving: boolean; owned?: boolean; frame(progress: number): void; finish(): void } | undefined;
 
 function ensureOutdoor() {
   if (!outdoor) {
@@ -107,14 +114,62 @@ function sendKey(type: "keydown" | "keyup", code: string) {
   (type === "keydown" ? canvas : window).dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
 }
 
+async function waitUntil(ready: () => boolean, description: string) {
+  const limit = performance.now() + 16_000;
+  while (!ready()) {
+    if (performance.now() >= limit) throw new Error(`${description} did not finish loading`);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+}
+
+function lookFromVehicle(scene: Scene, car: TransformNode, angle: "window" | "chase") {
+  const camera = new FreeCamera(`teaser-drive-${angle}`, Vector3.Zero(), scene);
+  camera.minZ = 0.05;
+  camera.maxZ = 1200;
+  camera.fov = angle === "window" ? 0.75 : 0.79;
+  const focus = Vector3.Zero();
+  scene.activeCamera = camera;
+  freeCamera = camera;
+  return (t: number) => {
+    const { x, y, z } = car.position;
+    const sine = Math.sin(car.rotation.y);
+    const cosine = Math.cos(car.rotation.y);
+    const side = angle === "window" ? -2.5 + 0.43 * t : -2.9 + 2.4 * t;
+    const along = angle === "window" ? 1.22 - 0.54 * t : -7.6 + 1.25 * t;
+    const height = angle === "window" ? 1.37 - 0.12 * t : 3.12 - 0.35 * t;
+    const lookSide = angle === "window" ? -0.34 : 0;
+    const lookAlong = angle === "window" ? 0.12 : 3.3;
+    const lookHeight = angle === "window" ? 1.18 : 1.15;
+    camera.position.set(x + along * sine + side * cosine, y + height, z + along * cosine - side * sine);
+    focus.set(x + lookAlong * sine + lookSide * cosine, y + lookHeight, z + lookAlong * cosine - lookSide * sine);
+    camera.setTarget(focus);
+  };
+}
+
 async function select(id: string) {
   const shot = shots[id];
-  if (!shot) throw new Error(`Unknown teaser shot ${id}`);
+  const shortName = bulletShortNames.find((name) => name === id);
+  if (!shot && !shortName) throw new Error(`Unknown teaser shot ${id}`);
   activeShot?.finish();
   freeCamera?.dispose();
   freeCamera = undefined;
+  if (activeShot?.owned) activeShot.scene.dispose();
+  if (activeShot?.driving) {
+    outdoor?.scene.dispose();
+    outdoor = undefined;
+  }
   indoor?.scene.dispose();
   indoor = undefined;
+  if (shortName) {
+    const next = await setupBulletShort(shortName, engine, canvas, ensureOutdoor, sendKey);
+    const usesCampus = next.scene === outdoor?.scene;
+    activeShot = { ...next, driving: usesCampus, owned: !usesCampus };
+    freeCamera = next.camera;
+    next.frame(0);
+    await next.scene.whenReadyAsync();
+    for (let index = 0; index < 3; index++) next.scene.render();
+    return;
+  }
   let scene: Scene;
   let frame: (t: number) => void;
   let finish = noop;
@@ -138,6 +193,59 @@ async function select(id: string) {
         camera.alpha = alpha + (t - 0.5) * orbit;
         camera.beta = beta + t * (shot.elevate ?? 0.008);
         camera.radius = Math.max(camera.lowerRadiusLimit ?? 0, radius * (1.035 - t * push));
+      };
+    } else if ("chant" in shot) {
+      session.setView("entrance");
+      scene.activeCamera?.detachControl();
+      const prefix = `campus-student-chanting-${shot.chant}-`;
+      const group = scene.transformNodes.filter(({ name }) => name.startsWith(prefix) && !name.includes("/"));
+      if (group.length !== 3) throw new Error(`Chant group ${shot.chant} did not have three students`);
+      const center = group.reduce((sum, member) => sum.addInPlace(member.position), Vector3.Zero()).scaleInPlace(1 / group.length);
+      const [x, , z] = center.asArray();
+      frame = freeMove(scene, {
+        from: [x + 4.45, 2.12, z + 4.15], to: [x + 3.04, 1.91, z + 4.55],
+        lookFrom: [x, 1.05, z], lookTo: [x - 0.1, 1.12, z], fov: 0.60,
+      });
+      await waitUntil(() => scene.animationGroups.filter(({ name }) =>
+        name.startsWith(prefix) && name.endsWith("/Campus_Chant_Loop")).length === group.length, "The chant animations");
+    } else if ("drive" in shot) {
+      session.setView("walk");
+      scene.activeCamera?.detachControl();
+      const player = scene.getMeshByName("walk-player");
+      const car = scene.getMeshByName("vehicle-sedan");
+      const avatar = scene.getTransformNodeByName("player-visual");
+      if (!player || !car || !avatar) throw new Error("The Swift Dzire or player actor is unavailable");
+      player.position.copyFrom(car.position);
+      player.position.x += 1.7;
+      delete canvas.dataset.playerVehicle;
+      await waitUntil(() => {
+        if (canvas.dataset.playerVehicle === "sedan") return true;
+        session.interactWithVehicle();
+        return canvas.dataset.playerVehicle === "sedan";
+      }, "The Swift Dzire");
+      await waitUntil(() => canvas.dataset.playerModel === "ready", "The player model");
+      const head = avatar.getChildTransformNodes().find(({ name }) => name === "head");
+      if (!head) throw new Error("The player rig has no head joint");
+      // The game hides the driver for its normal chase view. The capture camera
+      // can show the same seated, animated avatar through the car's window.
+      avatar.setEnabled(true);
+      const fitCabin = scene.onBeforeRenderObservable.add(() => {
+        // Compensate for the shared ride animation's higher two-wheeler seat,
+        // including the transition from standing while the car loads.
+        head.computeWorldMatrix(true);
+        const yaw = car.rotation.y;
+        avatar.position.y += car.position.y + 1.17 - head.getAbsolutePosition().y;
+        avatar.position.x += Math.sin(yaw) * 0.11;
+        avatar.position.z += Math.cos(yaw) * 0.11;
+      });
+      frame = lookFromVehicle(scene, car, shot.drive);
+      frame(0);
+      await scene.whenReadyAsync();
+      for (let index = 0; index < 7; index++) scene.render();
+      sendKey("keydown", "KeyW");
+      finish = () => {
+        sendKey("keyup", "KeyW");
+        scene.onBeforeRenderObservable.remove(fitCabin);
       };
     } else if ("action" in shot && shot.action === "player") {
       session.setView("walk");
@@ -185,7 +293,7 @@ async function select(id: string) {
     }
   }
 
-  activeShot = { scene, frame, finish };
+  activeShot = { scene, driving: "drive" in shot, frame, finish };
   frame(0);
   await scene.whenReadyAsync();
   scene.render();

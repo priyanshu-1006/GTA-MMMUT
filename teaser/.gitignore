@@ -1,5 +1,7 @@
 /public/footage/
 /public/score.wav
+/public/campus-chant.wav
+/public/*.aac
 /src/timeline.generated.json
 /output/
 /node_modules/

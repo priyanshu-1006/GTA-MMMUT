@@ -13,9 +13,11 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
 import "@babylonjs/loaders/glTF";
 import { annotationToWorld, type AnnotationPoint, type WorldGroundPoint } from "@gta-mmmut/world-data";
+import { createBulletEngineAudio } from "./bullet-engine-audio";
 
-export type VehicleId = "sedan" | "hatchback" | "scorpio" | "moped" | "bicycle";
+export type VehicleId = "sedan" | "hatchback" | "scorpio" | "moped" | "bullet" | "bicycle";
 export type VehicleKind = "car" | "two-wheel";
+type PillionVehicleId = "moped" | "bullet";
 
 interface VehicleSpec {
   id: VehicleId;
@@ -67,7 +69,15 @@ const specs: readonly VehicleSpec[] = [
     model: new URL("./assets/vehicles/moped.glb", import.meta.url).href,
     halfWidth: 0.38, halfLength: 0.93, height: 1.03, wheelBase: 1.2, wheelRadius: 0.285,
     forwardLimit: 10, reverseLimit: 0, acceleration: 3.1, braking: 7.5, steering: 0.46,
-    chaseDistance: 5.0, seatHeight: 0.78, seatOffset: -0.23,
+    // Place the driving clip's rearward hips over the model's front saddle.
+    chaseDistance: 5.0, seatHeight: 0.90, seatOffset: 0.13,
+  },
+  {
+    id: "bullet", kind: "two-wheel", label: "Royal Enfield Bullet", start: [1042.75, 612], yaw: 0,
+    model: new URL("./assets/vehicles/royal-enfield-bullet.glb", import.meta.url).href,
+    halfWidth: 0.44, halfLength: 1.11, height: 1.30, wheelBase: 1.385, wheelRadius: 0.328,
+    forwardLimit: 15, reverseLimit: 0, acceleration: 3.65, braking: 8.7, steering: 0.43,
+    chaseDistance: 5.35, seatHeight: 0.89, seatOffset: 0.015,
   },
   {
     id: "bicycle", kind: "two-wheel", label: "Bicycle", start: [1031.75, 612], yaw: 0,
@@ -103,6 +113,13 @@ export interface VehicleState {
   readonly halfLength: number;
 }
 
+export interface MissionPassengerPose {
+  readonly position: readonly [number, number, number];
+  readonly yaw: number;
+  readonly roll: number;
+  readonly action: "sit";
+}
+
 interface Wheel {
   readonly node: TransformNode;
   readonly steers: boolean;
@@ -114,6 +131,7 @@ interface VehicleRig {
   readonly pose: TransformNode;
   readonly collider: Mesh;
   readonly contactShadow: Mesh;
+  readonly pillion?: { readonly fittings: TransformNode; readonly actorAnchor: TransformNode };
   fallback?: TransformNode;
   wheels: Wheel[];
   speed: number;
@@ -174,7 +192,7 @@ function createFallback(scene: Scene, rig: VehicleRig, shadows: ShadowGenerator)
     result.metallic = 0;
     return result;
   };
-  const paint = finish("paint", kind === "car" ? "#476a7c" : "#5c754d");
+  const paint = finish("paint", id === "bullet" ? "#692627" : kind === "car" ? "#476a7c" : "#5c754d");
   const dark = finish("dark", "#313638");
   const glazing = finish("glazing", "#617782");
 
@@ -192,11 +210,13 @@ function createFallback(scene: Scene, rig: VehicleRig, shadows: ShadowGenerator)
     mount(CreateBox("car-cabin-proxy", { width: 1.57 * halfWidth, height: 0.48, depth: 0.88 * halfLength }, scene),
       root, 0, 1.14, -0.15, glazing);
   } else {
-    const moped = id === "moped";
-    mount(CreateBox("cycle-frame-proxy", { width: moped ? 0.28 : 0.07, height: moped ? 0.28 : 0.1, depth: 1.12 }, scene),
+    const motorized = id !== "bicycle";
+    const saddle = id === "moped" ? [0.76, -0.11] : id === "bullet" ? [0.78, -0.31]
+      : [rig.spec.seatHeight - 0.04, rig.spec.seatOffset];
+    mount(CreateBox("cycle-frame-proxy", { width: motorized ? 0.28 : 0.07, height: motorized ? 0.28 : 0.1, depth: 1.12 }, scene),
       root, 0, 0.52, 0, paint);
     mount(CreateBox("cycle-saddle-proxy", { width: 0.27, height: 0.085, depth: 0.33 }, scene),
-      root, 0, rig.spec.seatHeight - 0.04, rig.spec.seatOffset, dark);
+      root, 0, saddle[0], saddle[1], dark);
     mount(CreateBox("cycle-handle-proxy", { width: 0.57, height: 0.06, depth: 0.11 }, scene),
       root, 0, 0.98, 0.37, dark);
   }
@@ -217,6 +237,48 @@ function createFallback(scene: Scene, rig: VehicleRig, shadows: ShadowGenerator)
   return root;
 }
 
+function createPillion(id: PillionVehicleId, scene: Scene, pose: TransformNode, shadows: ShadowGenerator) {
+  const fittings = new TransformNode(`${id}-pillion-fittings`, scene);
+  fittings.parent = pose;
+  const leather = new PBRMaterial(`${id}-pillion-leather`, scene);
+  leather.albedoColor = Color3.FromHexString(id === "bullet" ? "#302926" : "#3f3027").toLinearSpace();
+  leather.roughness = 0.8;
+  const steel = new PBRMaterial(`${id}-pillion-steel`, scene);
+  steel.albedoColor = Color3.FromHexString("#44484a").toLinearSpace();
+  steel.metallic = 0.65;
+  steel.roughness = 0.53;
+
+  function part(name: string, width: number, height: number, depth: number,
+    x: number, y: number, z: number, material: PBRMaterial) {
+    const mesh = CreateBox(`${id}-pillion-${name}`, { width, height, depth }, scene);
+    mesh.parent = fittings;
+    mesh.position.set(x, y, z);
+    mesh.material = material;
+    mesh.isPickable = false;
+    mesh.receiveShadows = true;
+    shadows.addShadowCaster(mesh, false);
+  }
+
+  const seatZ = id === "bullet" ? -0.64 : -0.52;
+  const seatDepth = id === "bullet" ? 0.30 : 0.42;
+  const railZ = seatZ - seatDepth / 2 - 0.02;
+  const footrestZ = id === "bullet" ? -0.28 : -0.20;
+  part("seat-rack", 0.25, 0.04, seatDepth + 0.02, 0, 0.76, seatZ + 0.01, steel);
+  part("seat-cushion", 0.28, 0.08, seatDepth, 0, 0.81, seatZ, leather);
+  part("grab-rail", 0.28, 0.035, 0.055, 0, 0.87, railZ, steel);
+  for (const side of [-1, 1]) {
+    part("grab-rail-post", 0.035, 0.11, 0.04, side * 0.11, 0.82, railZ, steel);
+    part("footrest", 0.19, 0.045, 0.12, side * 0.17, 0.45, footrestZ, steel);
+  }
+
+  const actorAnchor = new TransformNode(`${id}-pillion-actor-anchor`, scene);
+  actorAnchor.parent = pose;
+  // Sitting_Idle_Loop lowers the hips and offsets them behind the actor root.
+  actorAnchor.position.set(0, 0.42, id === "bullet" ? -0.40 : -0.31);
+  fittings.setEnabled(false);
+  return { fittings, actorAnchor };
+}
+
 export function createCampusVehicles(scene: Scene, shadows: ShadowGenerator, extent: readonly WorldGroundPoint[]) {
   const xs = extent.map(([x]) => x);
   const zs = extent.map(([, z]) => z);
@@ -227,11 +289,14 @@ export function createCampusVehicles(scene: Scene, shadows: ShadowGenerator, ext
   const displacement = new Vector3();
   const collisionMaterial = new PBRMaterial("vehicle-collision-surface", scene);
   const contactShadowMaterial = createContactShadowMaterial(scene);
+  const bulletEngine = createBulletEngineAudio();
+  scene.onDisposeObservable.addOnce(bulletEngine.dispose);
   const dismountProbe = new Mesh("vehicle-dismount-probe", scene);
   dismountProbe.ellipsoid.set(0.33, 0.83, 0.33);
   dismountProbe.ellipsoidOffset.set(0, 0.83, 0);
   dismountProbe.isPickable = false;
   let occupied: VehicleRig | null = null;
+  let passengerVehicle: VehicleRig | null = null;
 
   const rigs = specs.map((spec): VehicleRig => {
     const [x, z] = annotationToWorld(spec.start);
@@ -252,6 +317,7 @@ export function createCampusVehicles(scene: Scene, shadows: ShadowGenerator, ext
     collider.checkCollisions = spec.kind === "two-wheel";
     collider.isVisible = false;
     collider.isPickable = false;
+    collider.computeWorldMatrix(true);
 
     const contactShadow = CreateGround(`${spec.id}-contact-shadow`, {
       width: 2.95 * spec.halfWidth, height: 2.6 * spec.halfLength,
@@ -264,6 +330,7 @@ export function createCampusVehicles(scene: Scene, shadows: ShadowGenerator, ext
 
     const rig: VehicleRig = {
       spec, node, pose, collider, contactShadow, wheels: [], speed: 0, steer: 0, spin: 0,
+      pillion: spec.id === "moped" || spec.id === "bullet" ? createPillion(spec.id, scene, pose, shadows) : undefined,
       modelReady: false, modelRequested: false,
     };
     if (spec.kind === "two-wheel") rig.fallback = createFallback(scene, rig, shadows);
@@ -304,9 +371,9 @@ export function createCampusVehicles(scene: Scene, shadows: ShadowGenerator, ext
     });
   }
 
-  function prefetchNearby(x: number, z: number, kind?: VehicleKind) {
+  function prefetchNearby(x: number, z: number, filter?: VehicleKind | VehicleId) {
     for (const rig of rigs) {
-      if (kind && rig.spec.kind !== kind) continue;
+      if (filter && rig.spec.kind !== filter && rig.spec.id !== filter) continue;
       if (Math.hypot(x - rig.node.position.x, z - rig.node.position.z) < prefetchRange) loadModel(rig);
     }
   }
@@ -386,6 +453,37 @@ export function createCampusVehicles(scene: Scene, shadows: ShadowGenerator, ext
 
   return {
     prefetchNearby,
+    setEngineAudioEnabled: bulletEngine.setEnabled,
+    setEngineAudioPaused: bulletEngine.setPaused,
+    setMissionPassenger(id: PillionVehicleId | null) {
+      const next = rigs.find(({ spec }) => spec.id === id) ?? null;
+      if (passengerVehicle === next) return;
+      passengerVehicle?.pillion?.fittings.setEnabled(false);
+      passengerVehicle = next;
+      passengerVehicle?.pillion?.fittings.setEnabled(true);
+    },
+    missionPassengerPose(): MissionPassengerPose | null {
+      if (!occupied?.pillion || occupied !== passengerVehicle) return null;
+      const anchor = occupied.pillion.actorAnchor;
+      anchor.computeWorldMatrix(true);
+      const { x, y, z } = anchor.getAbsolutePosition();
+      return { position: [x, y, z], yaw: occupied.node.rotation.y, roll: occupied.pose.rotation.z, action: "sit" };
+    },
+    placeParkedVehicle(id: VehicleId, [x, z]: WorldGroundPoint, yaw: number): boolean {
+      const rig = rigs.find(({ spec }) => spec.id === id);
+      if (!rig || occupied === rig || ![x, z, yaw].every(Number.isFinite) ||
+        x < minX || x > maxX || z < minZ || z > maxZ) return false;
+      rig.node.position.set(x, grade, z);
+      rig.node.rotation.y = yaw;
+      rig.pose.rotation.z = 0;
+      rig.speed = 0;
+      rig.steer = 0;
+      rig.spin = 0;
+      for (const wheel of rig.wheels) wheel.node.rotationQuaternion = Quaternion.Identity();
+      rig.collider.computeWorldMatrix(true);
+      loadModel(rig);
+      return true;
+    },
     nearby([x, z]: WorldGroundPoint): VehicleState | null {
       if (occupied) return null;
       prefetchNearby(x, z);
@@ -413,6 +511,7 @@ export function createCampusVehicles(scene: Scene, shadows: ShadowGenerator, ext
       loadModel(rig);
       if (!rig.modelReady && !rig.fallback) return false;
       occupied = rig;
+      if (rig.spec.id === "bullet") bulletEngine.setMounted(true);
       return true;
     },
     exit(): WorldGroundPoint | null {
@@ -423,6 +522,7 @@ export function createCampusVehicles(scene: Scene, shadows: ShadowGenerator, ext
       occupied.steer = 0;
       occupied.pose.rotation.z = 0;
       for (const wheel of occupied.wheels) wheel.node.rotationQuaternion = Quaternion.RotationYawPitchRoll(0, occupied.spin, 0);
+      if (occupied.spec.id === "bullet") bulletEngine.setMounted(false);
       occupied = null;
       return position;
     },
@@ -436,6 +536,7 @@ export function createCampusVehicles(scene: Scene, shadows: ShadowGenerator, ext
         wheel.node.rotationQuaternion = Quaternion.RotationYawPitchRoll(wheel.steers ? occupied.steer : 0, occupied.spin, 0);
       }
       if (occupied.spec.kind === "two-wheel") occupied.pose.rotation.z = -occupied.steer * Math.abs(occupied.speed) * 0.075;
+      if (occupied.spec.id === "bullet") bulletEngine.setLoad(occupied.speed, input.brake ? 0 : input.throttle);
     },
     active: (): VehicleState | null => occupied ? describe(occupied) : null,
     states: (): readonly VehicleState[] => rigs.map(describe),

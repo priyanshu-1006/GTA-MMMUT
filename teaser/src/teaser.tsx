@@ -3,7 +3,7 @@ import { AbsoluteFill, Audio, Easing, Img, interpolate, OffthreadVideo, Sequence
 import "@fontsource/archivo-black/latin-400.css";
 import "@fontsource/barlow/latin-500.css";
 import "@fontsource/barlow/latin-700.css";
-import { timeline } from "./timeline.generated.json";
+import { externalMusic, musicCredit, timeline } from "./timeline.generated.json";
 
 type Shot = (typeof timeline)[number];
 
@@ -13,6 +13,20 @@ const dark = "#101a18";
 const easing = Easing.bezier(0.25, 0.65, 0.28, 1);
 const motion = (frame: number, start: number, end: number, from: number, to: number) =>
   interpolate(frame, [start, end], [from, to], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing });
+
+const chantRanges: { from: number; end: number }[] = [];
+timeline.reduce((from, shot) => {
+  const end = from + shot.frames;
+  if (shot.role === "chant") chantRanges.push({ from, end });
+  return end;
+}, 0);
+
+function musicVolume(frame: number) {
+  if (!externalMusic) return 1;
+  const cue = chantRanges.find(({ from, end }) => frame >= from - 8 && frame <= end + 8);
+  if (!cue) return 1;
+  return interpolate(frame, [cue.from - 8, cue.from + 6, cue.end - 5, cue.end + 8], [1, 0.32, 0.32, 1]);
+}
 
 const labelStyle: CSSProperties = {
   fontFamily: "Barlow, sans-serif",
@@ -42,7 +56,11 @@ function Title({ end }: { end: boolean }) {
       opacity: subtitle, transform: `translateY(${(1 - subtitle) * 25}px)`, letterSpacing: 0.5,
     }}>Built by Priyanshu Chaurasia</div>
     {end && <div style={{ ...labelStyle, opacity: motion(frame, 31, 48, 0, 1), marginTop: 55, fontSize: 22 }}>
-      gta-mmmut.vercel.app
+      gta.mmmut.app
+    </div>}
+    {end && musicCredit && <div style={{ color: cream, fontFamily: "Barlow, sans-serif", fontSize: 23,
+      opacity: motion(frame, 36, 53, 0, 0.85), marginTop: 22 }}>
+      {musicCredit}
     </div>}
   </AbsoluteFill>;
 }
@@ -93,12 +111,14 @@ export function CampusTeaser() {
   const { height } = useVideoConfig();
   let start = 0;
   return <AbsoluteFill style={{ backgroundColor: dark }}>
-    <Audio src={staticFile("score.wav")} />
+    <Audio src={staticFile("score.wav")} volume={musicVolume} />
     {timeline.map((shot) => {
       const from = start;
       start += shot.frames;
       return <Sequence key={shot.id} from={from} durationInFrames={shot.frames}>
         <Footage shot={shot} />
+        {shot.role === "chant" && <Audio src={staticFile("campus-chant.wav")}
+          volume={(frame) => 0.8 * motion(frame, 0, 6, 0, 1) * motion(frame, shot.frames - 10, shot.frames, 1, 0)} />}
       </Sequence>;
     })}
     {[0, height - 72].map((top) => <div key={top} style={{ position: "absolute", top, width: "100%", height: 72, background: dark }} />)}

@@ -10,7 +10,10 @@ import type { Scene } from "@babylonjs/core/scene";
 import "@babylonjs/loaders/glTF";
 import { annotationToWorld, southernEntrance, type AnnotationPoint, type WorldGroundPoint } from "@gta-mmmut/world-data";
 import { campusGardens } from "@gta-mmmut/world-data/campus-gardens";
+import { campusBoundary } from "@gta-mmmut/world-data/campus-boundary";
+import { campusRoads } from "@gta-mmmut/world-data/campus-roads";
 import { deoriaRoad } from "@gta-mmmut/world-data/deoria-road";
+import { createTrafficModels } from "./campus-traffic-models";
 import { createContactShadowMaterial } from "./campus-vehicles";
 
 export type TrafficObstacle = { readonly position: WorldGroundPoint } & (
@@ -31,6 +34,18 @@ interface RoutePoint extends RoadPoint {
 interface Route {
   points: readonly RoutePoint[];
   length: number;
+}
+
+interface StreamVehicle {
+  readonly root: TransformNode;
+  readonly collider: AbstractMesh;
+  readonly route: Route;
+  readonly cruise: number;
+  readonly dimensions: { readonly halfWidth: number; readonly halfLength: number };
+  offset: number;
+  speed: number;
+  cooldown: number;
+  obstacle: TrafficObstacle | null;
 }
 
 const scorpio = {
@@ -125,9 +140,196 @@ function roadPoints(points: readonly AnnotationPoint[], speed: number): RoadPoin
 }
 
 function centerline(id: string) {
-  const line = southernEntrance.centerlines.find((entry) => entry.id === id);
+  const line = southernEntrance.centerlines.find((entry) => entry.id === id)
+    ?? campusRoads.centerlines.find((entry) => entry.id === id);
   if (!line) throw new Error(`Missing campus traffic centerline ${id}`);
   return line.points;
+}
+
+function westSpine() {
+  return [
+    ...centerline("west-spine-south-end").slice().reverse(),
+    ...centerline("west-spine-south").slice(0, -1).reverse(),
+    ...centerline("west-spine-north").slice(0, -1).reverse(),
+    ...["west-spine-to-north", "west-spine-middle-south", "west-spine-middle-north",
+      "west-spine-north-junction", "west-spine-north-end"].flatMap((id) => centerline(id).slice(1)),
+  ];
+}
+
+function streamRoutes() {
+  const { left, right } = deoriaRoad.annotationBounds;
+  const lanes = deoriaRoad.carriageways.flatMap(({ direction, laneCenters }) => laneCenters.map((z) => {
+    const eastbound = direction === "eastbound";
+    const from = eastbound ? left + 5 : right - 5;
+    const to = eastbound ? right - 5 : left + 5;
+    return routeFrom(roadPoints([[from, z], [to, z]], 17));
+  }));
+  const frontage = deoriaRoad.carriageways[0].laneCenters[0];
+  const [oldGateX, oldGateZ] = campusBoundary.oldGate.position;
+  const spine = westSpine();
+  const bikeLane = (points: readonly AnnotationPoint[], side: number) =>
+    points.map(([x, z]): AnnotationPoint => [x + side, z]);
+
+  const oldGateArrival = routeFrom([
+    ...roadPoints([[left + 14, frontage], [oldGateX - 22, frontage]], 10),
+    ...roadPoints([[oldGateX + 2.2, frontage], [oldGateX + 2.2, 905], [oldGateX + 2.2, oldGateZ]], 4),
+    ...roadPoints(bikeLane(spine.slice(1), 2.2), 8),
+  ], 2.1);
+  const oldGateDeparture = routeFrom([
+    ...roadPoints(bikeLane(spine.slice().reverse(), -2.2), 8),
+    ...roadPoints([[oldGateX - 2.2, 905], [oldGateX - 2.2, frontage], [oldGateX + 18, frontage]], 4),
+    ...roadPoints([[right - 10, frontage]], 11),
+  ], 2.1);
+  const mainGateLane = bikeLane([
+    ...centerline("gate-apron").slice().reverse(),
+    ...centerline("entrance-approach").slice(0, -1).reverse(),
+  ], 4.5);
+  const mainGateArrival = routeFrom([
+    ...roadPoints([[left + 22, frontage], [mainGateLane[0][0] - 30, frontage]], 10),
+    ...roadPoints([[mainGateLane[0][0], frontage], ...mainGateLane.slice(0, 3)], 4),
+    ...roadPoints(mainGateLane.slice(3), 8),
+    ...roadPoints(centerline("splitter-west").slice(0, -1).reverse(), 5),
+    ...roadPoints(centerline("west-campus-connection").slice(0, -1).reverse(), 8),
+    ...roadPoints(bikeLane(spine.slice(spine.findIndex(([, z]) => z === 645) + 1), 2.2), 8),
+  ], 2.1);
+  return { lanes, bikes: [oldGateArrival, oldGateDeparture, mainGateArrival] };
+}
+
+function stoppingRoom(vehicle: StreamVehicle, blockers: readonly TrafficObstacle[]) {
+  const current = vehicle.obstacle;
+  if (!current || "radius" in current) return 0;
+  const { position: [x, z], yaw, halfWidth, halfLength } = current;
+  const sin = Math.sin(yaw);
+  const cos = Math.cos(yaw);
+  let room = Math.min(34, vehicle.route.length - vehicle.offset);
+  for (const other of blockers) {
+    if (other === current) continue;
+    const dx = other.position[0] - x;
+    const dz = other.position[1] - z;
+    const forward = dx * sin + dz * cos;
+    if (forward <= 0 || forward > room + 6) continue;
+    const across = Math.abs(dx * cos - dz * sin);
+    let obstacleWidth: number;
+    let obstacleLength: number;
+    if ("radius" in other) {
+      obstacleWidth = other.radius;
+      obstacleLength = other.radius;
+    } else {
+      const parallel = Math.abs(Math.cos(other.yaw - yaw));
+      const perpendicular = Math.abs(Math.sin(other.yaw - yaw));
+      obstacleWidth = other.halfWidth * parallel + other.halfLength * perpendicular;
+      obstacleLength = other.halfLength * parallel + other.halfWidth * perpendicular;
+    }
+    if (across < halfWidth + obstacleWidth + 0.24) {
+      const buffer = 0.65 + vehicle.speed * 0.26;
+      room = Math.min(room, Math.max(0, forward - halfLength - obstacleLength - buffer));
+    }
+  }
+  return room;
+}
+
+function createTrafficStreams(scene: Scene, turningCarStart: WorldGroundPoint) {
+  const { lanes, bikes } = streamRoutes();
+  const model = createTrafficModels(scene);
+  const streamRoot = new TransformNode("campus-traffic-streams", scene);
+  const streams: StreamVehicle[] = [];
+  const paints = ["#8b9696", "#646477", "#b3a98d", "#646e56", "#844a49", "#496a7b"];
+  let seed = 11974;
+
+  function random() {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 0x100000000;
+  }
+
+  function move(vehicle: StreamVehicle, at: number) {
+    vehicle.offset = at;
+    const { position, yaw } = sampleRoute(vehicle.route, at);
+    vehicle.root.position.set(position[0], ground, position[1]);
+    vehicle.root.rotation.y = yaw;
+    vehicle.obstacle = { position, yaw, ...vehicle.dimensions };
+    vehicle.collider.computeWorldMatrix(true);
+  }
+
+  function add(kind: "car" | "bike", route: Route, at: number) {
+    const id = "ambient-traffic-" + kind + "-" + streams.length;
+    const root = new TransformNode(id, scene);
+    root.parent = streamRoot;
+    const paint = paints[Math.floor(random() * paints.length)];
+    model(kind, paint, id, root);
+    const dimensions = kind === "car"
+      ? { halfWidth: 0.84, halfLength: 1.84 }
+      : { halfWidth: 0.31, halfLength: 0.93 };
+    const height = kind === "car" ? 1.36 : 1.46;
+    const collider = CreateBox(id + "-collider", {
+      width: dimensions.halfWidth * 2, depth: dimensions.halfLength * 2, height,
+    }, scene);
+    collider.parent = root;
+    collider.position.y = height / 2;
+    collider.isVisible = false;
+    collider.isPickable = false;
+    collider.checkCollisions = true;
+    const cruise = kind === "car" ? 12 + random() * 5 : 7 + random() * 2.6;
+    const vehicle: StreamVehicle = { root, collider, route, dimensions, cruise, offset: at,
+      speed: Math.min(cruise, sampleRoute(route, at).speed), cooldown: 0, obstacle: null };
+    move(vehicle, at);
+    streams.push(vehicle);
+  }
+
+  for (const [laneIndex, lane] of lanes.entries()) {
+    for (let slot = 0; slot < 4; slot++) {
+      let at = lane.length * (slot + 0.24 + 0.5 * random()) / 4;
+      if (laneIndex === 0 && distance(sampleRoute(lane, at).position, turningCarStart) < 14) at -= 17;
+      add("car", lane, at);
+    }
+  }
+  for (const [index, route] of bikes.entries()) {
+    for (const ratio of index === 2 ? [0.46, 0.56] : [0.25, 0.52]) {
+      add("bike", route, route.length * ratio);
+    }
+  }
+
+  function closeToCamera([x, z]: WorldGroundPoint) {
+    const camera = scene.activeCamera?.globalPosition;
+    return camera && Math.hypot(camera.x - x, camera.y - ground, camera.z - z) < 38;
+  }
+
+  function obstacles() {
+    return streams.flatMap(({ obstacle }) => obstacle ? [obstacle] : []);
+  }
+
+  return {
+    obstacles,
+    update(dt: number, blockers: readonly TrafficObstacle[]) {
+      const snapshot = [...blockers, ...obstacles()];
+      for (const vehicle of streams) {
+        const { route } = vehicle;
+        if (!vehicle.obstacle) {
+          vehicle.cooldown -= dt;
+          const start = route.points[0];
+          if (vehicle.cooldown > 0 || closeToCamera(start.position) || snapshot.some((other) =>
+            distance(start.position, other.position) < 8)) continue;
+          vehicle.speed = 0;
+          move(vehicle, 0);
+          vehicle.root.setEnabled(true);
+          if (vehicle.obstacle) snapshot.push(vehicle.obstacle);
+          continue;
+        }
+        const position = vehicle.obstacle.position;
+        const room = stoppingRoom(vehicle, snapshot);
+        const target = Math.min(vehicle.cruise, sampleRoute(route, vehicle.offset).speed, Math.sqrt(10 * room));
+        const difference = target - vehicle.speed;
+        vehicle.speed += Math.sign(difference) * Math.min(Math.abs(difference), (difference < 0 ? 5 : 2.6) * dt);
+        const step = Math.min(room, vehicle.speed * dt);
+        vehicle.collider.checkCollisions = Boolean(closeToCamera(position));
+        if (step > 0) move(vehicle, vehicle.offset + step);
+        if (route.length - vehicle.offset < 0.025 && !closeToCamera(position)) {
+          vehicle.obstacle = null;
+          vehicle.cooldown = 0.9 + random() * 3.4;
+          vehicle.root.setEnabled(false);
+        }
+      }
+    },
+  };
 }
 
 function createRoutes() {
@@ -207,6 +409,8 @@ function overlaps(spec: CarSpec, position: WorldGroundPoint, yaw: number, other:
 
 export function createCampusTraffic(scene: Scene) {
   const routes = createRoutes();
+  const firstArrival = sampleRoute(routes.arrival, routes.firstArrival).position;
+  let streams: ReturnType<typeof createTrafficStreams> | undefined;
   const root = new TransformNode("campus-traffic", scene);
   const collider = CreateBox("campus-traffic-collider", { size: 1 }, scene);
   collider.parent = root;
@@ -301,7 +505,12 @@ export function createCampusTraffic(scene: Scene) {
     firstCar = car;
     selectCar(car);
     place(car, routes.arrival, offset, false);
-    root.setEnabled(true);
+    const start = sampleRoute(routes.arrival, offset);
+    if (streams?.obstacles().some((vehicle) => overlaps(car.spec, start.position, start.yaw, vehicle))) {
+      phase = "cooldown";
+    } else {
+      root.setEnabled(true);
+    }
   });
 
   function place(car: TrafficCar, route: Route, at: number, reverse: boolean) {
@@ -334,10 +543,21 @@ export function createCampusTraffic(scene: Scene) {
     return camera && Math.hypot(camera.x - x, camera.y - ground, camera.z - z) < 40;
   }
 
+  function turningCar(): TrafficObstacle | null {
+    if (!active || !root.isEnabled()) return null;
+    const { halfWidth, halfLength } = active.spec;
+    return { position: [root.position.x, root.position.z], yaw: root.rotation.y, halfWidth, halfLength };
+  }
+
   return {
     update(elapsed: number, blockers: readonly TrafficObstacle[]) {
-      if (!active || !Number.isFinite(elapsed) || elapsed <= 0) return;
+      if (!Number.isFinite(elapsed) || elapsed <= 0) return;
+      streams ??= createTrafficStreams(scene, firstArrival);
       const dt = Math.min(elapsed, 0.1);
+      const car = turningCar();
+      streams.update(dt, car ? [...blockers, car] : blockers);
+      if (!active) return;
+      const trafficBlockers = [...blockers, ...streams.obstacles()];
       if (phase === "parking" || phase === "cooldown") {
         wait -= dt;
         if (wait > 0) return;
@@ -345,7 +565,7 @@ export function createCampusTraffic(scene: Scene) {
           const next = (active === firstCar ? secondCar : firstCar) ?? active;
           const spawn = routes.arrival.points[0];
           if (cameraNear(spawn.position) ||
-              blockers.some((obstacle) => overlaps(next.spec, spawn.position, spawn.yaw, obstacle))) return;
+              trafficBlockers.some((obstacle) => overlaps(next.spec, spawn.position, spawn.yaw, obstacle))) return;
           if (next !== active) selectCar(next);
           roll = 0;
           phase = "arrival";
@@ -360,7 +580,9 @@ export function createCampusTraffic(scene: Scene) {
       const route = routes[phase];
       const reverse = phase === "backing";
       const left = route.length - offset;
-      const clear = remainingSpace(active.spec, route, reverse, blockers);
+      const here: WorldGroundPoint = [root.position.x, root.position.z];
+      const nearby = trafficBlockers.filter((obstacle) => distance(here, obstacle.position) <= lookAhead + 5);
+      const clear = remainingSpace(active.spec, route, reverse, nearby);
       const target = Math.min(sampleRoute(route, offset).speed,
         Math.sqrt(2 * braking * Math.max(0, clear - (clear < Math.min(left, lookAhead) ? 0.45 : 0))));
       const delta = target - speed;
@@ -399,10 +621,12 @@ export function createCampusTraffic(scene: Scene) {
         root.setEnabled(false);
       }
     },
-    obstacle(): TrafficObstacle | null {
-      if (!active || !root.isEnabled()) return null;
-      const { halfWidth, halfLength } = active.spec;
-      return { position: [root.position.x, root.position.z], yaw: root.rotation.y, halfWidth, halfLength };
+    obstacle: turningCar,
+    obstacles(): TrafficObstacle[] {
+      const car = turningCar();
+      const vehicles = streams?.obstacles() ?? [];
+      if (car) vehicles.push(car);
+      return vehicles;
     },
   };
 }

@@ -15,6 +15,7 @@ import { itCampusSplitRow } from "@gta-mmmut/world-data/campus-access";
 import { campusBuildings } from "@gta-mmmut/world-data/campus-buildings";
 import earcut from "earcut";
 import { academicFrontages, lectureEntranceWidth } from "./academic-frontages";
+import type { BuildingDoorway } from "./building-interiors";
 import { applyMasonryUvs, createMasonryMaterial } from "./masonry-finishes";
 import { courtGalleries, insetCourt, nalandaCampusDeckY, nalandaCampusFloor, nalandaCampusGarden,
   nalandaCampusGardenY, nalandaCampusGalleries, nalandaCampusStairs, nalandaEntranceRamp,
@@ -49,7 +50,7 @@ function clip(outline: readonly Point[], [west, north, east, south]: Rect): Poin
   });
 }
 
-export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): void {
+export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator) {
   const batches = new Map<PBRMaterial, Mesh[]>();
   function material(name: string, color: string, roughness = 0.92, masonry?: "plaster" | "concrete" | "stone") {
     const finish = masonry ? createMasonryMaterial(scene, name, color, masonry) : new PBRMaterial(name, scene);
@@ -203,26 +204,49 @@ export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): v
   const cafeMid = (cafeEast + cafeWest) / 2;
   const cafeFront = cafeSouth - 0.65;
   const cafeHeight = 3.85;
+  const cafeStepCount = 3;
+  const cafeStepRun = 0.36;
+  const cafeStepRise = 0.11;
+  const cafeStepDepth = 1.41;
+  const cafeStepHalfWidth = 1.58;
+  const cafeDoorWidth = 2.46;
+  const cafeDoorHeight = 2.39;
+  const cafeDoorY = cafeStepCount * cafeStepRise;
+  const cafeDoorX = cafeWest + 0.6 + wingWidth * 1.5 + 1.46;
+  const cafeteriaDoorway: BuildingDoorway = {
+    id: "cafeteria", point: [cafeDoorX, cafeFront + 0.1], outward: [0, 1],
+    baseY: cafeDoorY, width: cafeDoorWidth, height: cafeDoorHeight, finish: "#625b48",
+  };
   for (let wing = 0; wing < 4; wing++) {
     const west = cafeWest + 0.6 + wing * wingWidth;
     const east = west + wingWidth;
     const center = (west + east) / 2;
     const north = cafeNorth + 1.45;
     const south = cafeFront - (wing === 0 || wing === 3 ? 0.61 : 0);
-    rectangle(cream, [west, north, east, south], 0, cafeHeight, `B21-wing-${wing + 1}`);
+    const isEntrance = wing === 1;
+    if (isEntrance) {
+      const left = cafeDoorX - cafeDoorWidth / 2;
+      const right = cafeDoorX + cafeDoorWidth / 2;
+      rectangle(cream, [west, north, left, south], 0, cafeHeight, "B21-entry-left");
+      rectangle(cream, [right, north, east, south], 0, cafeHeight, "B21-entry-right");
+      rectangle(cream, [left, north, right, south], cafeDoorHeight + cafeDoorY, cafeHeight, "B21-entry-lintel");
+      rectangle(cream, [left, north, right, south - 1.4], 0, cafeDoorHeight + cafeDoorY, "B21-entry-rear");
+    } else rectangle(cream, [west, north, east, south], 0, cafeHeight, `B21-wing-${wing + 1}`);
     hipRoof([west - 0.28, north - 0.38, east + 0.28, south + 0.36], cafeHeight + 0.14, 1.48);
     box(orange, center, cafeHeight + 0.03, south + 0.11, wingWidth + 0.18, 0.26, 0.27);
     box(orange, west + 0.17, cafeHeight / 2, south + 0.035, 0.29, cafeHeight, 0.16);
     box(orange, east - 0.17, cafeHeight / 2, south + 0.035, 0.29, cafeHeight, 0.16);
-    const doorX = center + (wing % 2 === 0 ? 1.46 : -1.46);
-    southWindow(doorX, 1.52, south, 2.46, 2.39);
+    const doorX = isEntrance ? cafeDoorX : center + (wing % 2 === 0 ? 1.46 : -1.46);
+    if (!isEntrance) southWindow(doorX, 1.52, south, cafeDoorWidth, cafeDoorHeight);
     southWindow(center - (doorX - center), 2.07, south, 2.03, 1.22);
-    for (let step = 0; step < 3; step++) {
-      const depth = 1.41 - step * 0.36;
-      rectangle(steps, [doorX - 1.58, south, doorX + 1.58, south + depth],
-        0, 0.11 * (step + 1), "B21-entry-step");
+    for (let step = 0; step < cafeStepCount; step++) {
+      const depth = cafeStepDepth - step * cafeStepRun;
+      rectangle(steps, [doorX - cafeStepHalfWidth, south, doorX + cafeStepHalfWidth, south + depth],
+        0, cafeStepRise * (step + 1), isEntrance ? undefined : "B21-entry-step");
     }
   }
+  rectangle(steps, [cafeDoorX - cafeDoorWidth / 2, cafeFront - 1.4, cafeDoorX + cafeDoorWidth / 2, cafeFront],
+    0, cafeDoorY);
   sign("B21-cafeteria-sign", "UNIVERSITY CAFETERIA", cafeMid, cafeHeight + 0.025, cafeFront + 0.28, 13.7, 0.59);
   rectangle(paving, [cafeMid - 4.6, cafeFront + 1.39, cafeMid + 4.6, cafeFront + 5.65], 0, 0.04);
   for (const [x, z] of [[cafeMid - 9.4, cafeFront + 4.4], [cafeMid - 6.4, cafeFront + 6.55],
@@ -459,4 +483,12 @@ export function createCampusLandmarks(scene: Scene, shadows: ShadowGenerator): v
     mesh.isPickable = false;
     if (surface === tile || surface === blueRoof || surface === galleryRoof) shadows.addShadowCaster(mesh);
   }
+  return {
+    cafeteriaDoorway,
+    cafeteriaStepHeight(x: number, z: number) {
+      if (Math.abs(x - cafeDoorX) > cafeStepHalfWidth || z < cafeFront - 1.4 || z > cafeFront + cafeStepDepth) return;
+      const steps = Math.floor((cafeFront + cafeStepDepth - z) / cafeStepRun) + 1;
+      return Math.min(cafeStepCount, steps) * cafeStepRise + 0.025;
+    },
+  };
 }

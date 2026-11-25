@@ -13,6 +13,7 @@ export type PlayerCamera = keyof typeof playerCameras;
 export interface PlayerStatus {
   camera: PlayerCamera;
   vehicle: string | null;
+  vehicleId: VehicleState["id"] | null;
   vehicleKind: VehicleState["kind"] | null;
   nearby: string | null;
   portalNearby: PortalTarget | null;

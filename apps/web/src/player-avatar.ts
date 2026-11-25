@@ -100,7 +100,8 @@ export function createPlayerAvatar(scene: Scene, parent: TransformNode, canvas: 
       for (const [action, name] of Object.entries(clips) as [PlayerAction, string][]) {
         const group = result.animationGroups.find((clip) => clip.name === name);
         if (!group?.targetedAnimations.length) continue;
-        group.enableBlending = !preview;
+        // Constant seated tracks must apply the full pose on the first frame.
+        group.enableBlending = !preview && action !== "ride" && action !== "sit";
         group.blendingSpeed = 0.2;
         animation.set(action, group);
       }

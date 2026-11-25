@@ -195,6 +195,10 @@ export function GameSettingsPanel({ value, onChange, onClose }: GameSettingsPane
           <a href="https://sketchfab.com/3d-models/indian-car-scorpio-3d-model-for-free-4905188a9985423db9c9b67ec97a7c29" target="_blank" rel="noreferrer">Scorpio</a>
           {" by Gouravsuthar. Resized and fitted with simplified tires and wheel pivots."}
         </p>
+        <p>
+          <a href="https://sketchfab.com/3d-models/royal-enfield-2d17cbb6c8be4d4ca0d0ba5f115ff364" target="_blank" rel="noreferrer">Royal Enfield Bullet</a>
+          {" by rohitart3d. Resized with simplified geometry, new materials and rebuilt spoked wheels."}
+        </p>
         <p><a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></p>
       </details>
 

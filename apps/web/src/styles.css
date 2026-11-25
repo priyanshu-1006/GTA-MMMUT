@@ -248,6 +248,16 @@ body { margin: 0; }
 
 .panel .cse-current-room { margin-top: 0.5rem; color: #e8bd70; }
 .panel .cse-directions { margin-block: 1rem 0.75rem; font-size: 0.87rem; }
+
+.mission-panel { margin-top: 1rem; padding: 0.8rem; border: 1px solid #52705e; border-radius: 0.65rem; background: #20372c; }
+.mission-panel h2 { margin: 0 0 0.4rem; color: #f3d497; font-size: 1rem; }
+.mission-panel p { max-width: none; font-size: 0.82rem; line-height: 1.45; }
+.mission-panel .view-toggle { margin-top: 0.45rem; }
+.mission-choice p { margin-top: 0.25rem; }
+.mission-choice + .mission-choice { margin-top: 0.4rem; }
+.mission-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.entrance-map .mission-map-label { font-size: 14px; font-weight: 700; fill: #fff0cf; stroke: #23362b; stroke-width: 3px; paint-order: stroke; }
+.entrance-map .map-building-number text { font-size: 11px; fill: #fff3d2; stroke: #24382f; stroke-width: 3px; paint-order: stroke; }
 .cse-directory { width: 100%; max-height: 17rem; overflow: auto; overscroll-behavior: contain; }
 .cse-directory details { padding: 0.55rem 0; border-top: 1px solid #54665b; }
 .cse-directory summary { cursor: pointer; font-size: 0.9rem; font-weight: 650; }

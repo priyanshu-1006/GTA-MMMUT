@@ -1,14 +1,16 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ffmpeg from "@ffmpeg-installer/ffmpeg";
 import { prepareMedia } from "./prepare-media.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const output = join(root, "output");
-const clip = join(output, "teaser-render.mp4");
-const final = join(output, "GTA MMMUT - Teaser - Priyanshu Chaurasia.mp4");
+const outputName = process.env.TEASER_OUTPUT_NAME ?? "GTA MMMUT - Teaser - Priyanshu Chaurasia.mp4";
+if (outputName !== basename(outputName) || !outputName.endsWith(".mp4")) throw new Error("TEASER_OUTPUT_NAME must be an MP4 filename.");
+const clip = join(output, `${basename(outputName, ".mp4")}.render.mp4`);
+const final = join(output, outputName);
 const cliFolder = join(root, "node_modules", "@remotion", "cli");
 const cli = JSON.parse(readFileSync(join(cliFolder, "package.json"), "utf8")).bin.remotion;
 const chrome = [process.env.TEASER_CHROME, process.env.ProgramFiles, process.env["ProgramFiles(x86)"]]

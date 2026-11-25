@@ -1,7 +1,7 @@
 import { memo, useEffect, useId, useRef, useState, type Ref } from "react";
 import type { Engine } from "@babylonjs/core/Engines/engine";
 import type { Scene } from "@babylonjs/core/scene";
-import { southernEntrance, splitterFountainCenter, type AnnotationPoint } from "@gta-mmmut/world-data";
+import { southernEntrance, splitterFountainCenter, worldToAnnotation, type AnnotationPoint } from "@gta-mmmut/world-data";
 import { adminCoreBuildings } from "@gta-mmmut/world-data/admin-core";
 import { campusAccess, openStage } from "@gta-mmmut/world-data/campus-access";
 import { campusBoundary } from "@gta-mmmut/world-data/campus-boundary";
@@ -19,6 +19,10 @@ import { GameSettingsPanel, loadGameSettings, saveGameSettings, type GameSetting
 import { HomeScreen, TeaserLink, type HomeMode } from "./home-screen";
 import { campusAnalyticsEnabled, countCampusVisit, trackCampusEvent, watchCampusExploration, type ExplorationLocation } from "./campus-analytics";
 import { campusAreaAt } from "./campus-analytics-areas";
+import { campusMissionLocations, type CampusMissionLocationId } from "./campus-mission-locations";
+import { campusMissionRoute } from "./campus-mission-routes";
+import { campusMissions, chaiMissionVehicle, loadCompletedMissions, missionActionAvailable, missionFriendShirt, missionObjectives,
+  saveCompletedMissions, updateCampusMission, type CampusMissionId, type CampusMissionProgress } from "./campus-missions";
 import { loadPlayerAppearance, savePlayerAppearance, type PlayerAppearance } from "./player-appearance";
 import { playerCameras, type PlayerCamera, type PlayerStatus } from "./player-controls";
 import { PlayerWardrobe } from "./player-wardrobe";
@@ -33,9 +37,11 @@ const gardenPlots = [...campusGardens.atal.quarters, ...campusGardens.east.lawns
 const centerlines = [...southernEntrance.centerlines, ...campusRoads.centerlines];
 const confirmedBuildings = campusRegistry.filter(({ status }) => status === "CONFIRMED").length;
 
-const EntranceMap = memo(function EntranceMap({ playerPoint = null, markerRef }: {
+const EntranceMap = memo(function EntranceMap({ playerPoint = null, markerRef, missionTarget, missionRoute }: {
   playerPoint?: AnnotationPoint | null;
   markerRef?: Ref<SVGGElement>;
+  missionTarget?: CampusMissionLocationId;
+  missionRoute?: readonly AnnotationPoint[] | null;
 }) {
   const gridId = useId();
   const { splitterIsland, gate, connections } = southernEntrance;
@@ -150,6 +156,12 @@ const EntranceMap = memo(function EntranceMap({ playerPoint = null, markerRef }:
           <title>{name}</title>
         </path>
       ))}
+      {!markerRef && campusRegistry.filter(({ status }) => status === "CONFIRMED").map(({ id, name, anchor: [x, y] }) => (
+        <g className="map-building-number" key={id}>
+          <title>{id} {name}</title>
+          <text x={x} y={y} textAnchor="middle" dominantBaseline="central">{id}</text>
+        </g>
+      ))}
       <polygon points={points(campusAccess.cseLink)} fill="#5e6b7c" stroke="#b6c5d7" strokeWidth="1.5" >
         <title>Covered link between New and Old CSE</title>
       </polygon>
@@ -188,6 +200,22 @@ const EntranceMap = memo(function EntranceMap({ playerPoint = null, markerRef }:
           )}
         </g>
       ))}
+      {missionRoute && <g data-mission-route="" aria-label="Suggested mission route">
+        <polyline points={points(missionRoute)} fill="none" stroke="#39291b" strokeWidth={markerRef ? 15 : 9}
+          strokeLinejoin="round" strokeLinecap="round" />
+        <polyline points={points(missionRoute)} fill="none" stroke="#ffd27e" strokeWidth={markerRef ? 8 : 5}
+          strokeLinejoin="round" strokeLinecap="round" />
+      </g>}
+      {missionTarget && (() => {
+        const { point, label } = campusMissionLocations[missionTarget];
+        const [x, y] = worldToAnnotation(point);
+        const radius = markerRef ? 16 : 9;
+        return <g transform={`translate(${x} ${y})`}>
+          <title>{label}</title>
+          <path d={`M 0 ${-radius} L ${radius} 0 0 ${radius} ${-radius} 0 Z`} fill="#f7c56b" stroke="#231a0d" strokeWidth="2.5" />
+          {!markerRef && <text className="mission-map-label" x={13} y={-12}>{label}</text>}
+        </g>;
+      })()}
       {playerPoint && (
         <g className="connection-label">
           <circle cx={playerPoint[0]} cy={playerPoint[1]} r="6" fill="#96dfd7" stroke="#19392c" strokeWidth="2" />
@@ -337,7 +365,7 @@ function CseDirectory({ rooms }: { rooms: readonly CseRoom[] }) {
 }
 
 const initialPlayerStatus: PlayerStatus = {
-  camera: "follow", vehicle: null, vehicleKind: null, nearby: null, portalNearby: null, speed: 0,
+  camera: "follow", vehicle: null, vehicleId: null, vehicleKind: null, nearby: null, portalNearby: null, speed: 0,
 };
 
 function modeFromLocation(): HomeMode | null {
@@ -377,6 +405,13 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
   const enterBuildingRef = useRef<(id: InteriorId) => void>(() => {});
   const exitBuildingRef = useRef<() => void>(() => {});
   const explorationRef = useRef<() => ExplorationLocation | null>(() => null);
+  const missionRef = useRef<CampusMissionProgress | null>(null);
+  const missionInteractRef = useRef<() => boolean>(() => false);
+  const sharingChaiRef = useRef(false);
+  const [mission, setMission] = useState<CampusMissionProgress | null>(null);
+  const [completedMissions, setCompletedMissions] = useState(loadCompletedMissions);
+  const [missionCanInteract, setMissionCanInteract] = useState(false);
+  const [sharingChai, setSharingChai] = useState(false);
   const [state, setState] = useState<PreviewState>("loading");
   const [mapOpen, setMapOpen] = useState(false);
   const [cameraView, setCameraView] = useState<EntranceView>(mode === "play" ? "walk" : "buildings");
@@ -405,6 +440,57 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
   const nearbyBuilding = walking && playerStatus.portalNearby !== "exit" ? playerStatus.portalNearby : null;
   const entryTarget = loadingInterior ?? (!showMap ? nearbyBuilding ?? interiorForView(cameraView) : null);
   const currentInterior = insideBuilding ? buildingInteriors[insideBuilding] : null;
+  const objective = mission ? missionObjectives[mission.step] : null;
+  const missionRoute = mission && walking && !insideBuilding &&
+    (mission.step === "parkCar" && playerStatus.vehicleId === "hatchback" ||
+      mission.step === "parkBike" && playerStatus.vehicleId === chaiMissionVehicle)
+    ? campusMissionRoute(mission.step) : null;
+  const canShareChai = mission?.step === "shareChai" && insideBuilding === "cafeteria" && interiorLocation?.roomId === "cafeteria-chai";
+
+  function setMissionProgress(next: CampusMissionProgress | null) {
+    missionRef.current = next;
+    sessionRef.current?.setMissionProgress(next);
+    setMission(next);
+    setMissionCanInteract(false);
+  }
+
+  function startMission(id: CampusMissionId) {
+    if (!sessionRef.current?.prepareMission(id)) return;
+    setMissionProgress({ id, step: campusMissions[id].first });
+    canvasRef.current?.focus({ preventScroll: true });
+  }
+
+  function finishMission(progress: CampusMissionProgress) {
+    if (missionRef.current !== progress) return;
+    const completed = [...new Set([...completedMissions, ...loadCompletedMissions(), progress.id])];
+    saveCompletedMissions(completed);
+    setCompletedMissions(completed);
+    setMissionProgress({ ...progress, step: "complete" });
+  }
+
+  function interactWithMission() {
+    const progress = missionRef.current;
+    if (!progress || showMap || settingsOpen || wardrobeOpen || interiorLoadingRef.current) return false;
+    const interior = interiorRef.current;
+    if (interior) {
+      if (!canShareChai) return false;
+      if (sharingChaiRef.current) return true;
+      sharingChaiRef.current = true;
+      setSharingChai(true);
+      void interior.shareChai().then((done) => {
+        if (done && interiorRef.current === interior) finishMission(progress);
+      }).catch((error) => console.error("Unable to share chai.", error)).finally(() => {
+        sharingChaiRef.current = false;
+        setSharingChai(false);
+      });
+      return true;
+    }
+    const snapshot = sessionRef.current?.missionSnapshot(progress.id);
+    if (!snapshot || !missionActionAvailable(progress, snapshot)) return false;
+    if (progress.step === "meetFriend") setMissionProgress({ ...progress, step: "mountBike" });
+    else finishMission(progress);
+    return true;
+  }
 
   function changeView(view: EntranceView) {
     if (interiorLoadingRef.current) return;
@@ -423,12 +509,14 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
     setLoadingInterior(id);
     setInteriorError(false);
     outdoor.setWalkPaused(true);
+    const progress = missionRef.current;
+    const joiningFriend = id === "cafeteria" && progress?.step === "enterCafe" && walking && nearbyBuilding === "cafeteria";
     let interior: Awaited<ReturnType<typeof createBuildingInteriorScene>> | undefined;
     try {
       const { createBuildingInteriorScene } = await import("./building-interior-scene");
       if (engineRef.current !== renderer) return;
       interior = await createBuildingInteriorScene(id, renderer, canvas, setInteriorPlayerStatus, setInteriorLocation,
-        () => exitBuildingRef.current());
+        () => exitBuildingRef.current(), { cafeteriaFriendShirt: joiningFriend ? missionFriendShirt : undefined });
       if (engineRef.current !== renderer) {
         interior.scene.dispose();
         return;
@@ -445,6 +533,7 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
       outdoor.suspend();
       interior.activate();
       setInsideBuilding(id);
+      if (joiningFriend && missionRef.current === progress) setMissionProgress({ ...progress, step: "shareChai" });
       trackCampusEvent("campus_building_entered", { building: buildingInteriors[id].title });
     } catch (error) {
       interior?.scene.dispose();
@@ -469,6 +558,8 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
     sessionRef.current?.setWalkPaused(false);
     setInsideBuilding(null);
     setInteriorLocation(undefined);
+    const progress = missionRef.current;
+    if (progress?.step === "shareChai") setMissionProgress({ ...progress, step: "enterCafe" });
   }
 
   function setPlayPaused(value: boolean) {
@@ -528,7 +619,20 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
   useEffect(() => {
     enterBuildingRef.current = (id) => { void enterBuilding(id); };
     exitBuildingRef.current = exitBuilding;
+    missionInteractRef.current = interactWithMission;
   });
+
+  useEffect(() => {
+    function handleMissionKey(event: KeyboardEvent) {
+      if (event.code !== "KeyE" || event.repeat || event.target !== canvasRef.current || event.ctrlKey || event.altKey || event.metaKey) return;
+      if (missionInteractRef.current()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+    window.addEventListener("keydown", handleMissionKey, true);
+    return () => window.removeEventListener("keydown", handleMissionKey, true);
+  }, []);
 
   useEffect(() => {
     if (state === "ready") trackCampusEvent("campus_mode_selected", { mode: walking ? "play" : "tour" });
@@ -624,6 +728,7 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
         resizeObserver.observe(target);
         entrance.executeWhenReady(() => {
           if (disposed) return;
+          let nextMissionCheck = 0;
           renderer.runRenderLoop(() => {
             try {
               if (wardrobeRef.current) return;
@@ -632,6 +737,17 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
                 return;
               }
               entrance.render();
+              const progress = missionRef.current;
+              const now = performance.now();
+              if (progress && progress.step !== "complete" && now >= nextMissionCheck) {
+                nextMissionCheck = now + 90;
+                const snapshot = session.missionSnapshot(progress.id);
+                if (snapshot) {
+                  const next = updateCampusMission(progress, snapshot);
+                  if (next !== progress) setMissionProgress(next);
+                  setMissionCanInteract(missionActionAvailable(next, snapshot));
+                }
+              }
               const marker = mapMarkerRef.current;
               const pose = marker && session.mapPose();
               if (marker && pose) {
@@ -730,6 +846,15 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
             </select>
             <p className="cse-directions">{currentInterior.directions}</p>
             {interiorRef.current?.rooms && <CseDirectory rooms={interiorRef.current.rooms} />}
+            {mission && objective && <section className="mission-panel" aria-label="Active mission">
+              <h2>{campusMissions[mission.id].title}</h2>
+              <p role="status">{objective.text}</p>
+              {canShareChai && <button type="button" className="view-toggle walk-toggle" disabled={sharingChai}
+                onClick={() => { interactWithMission(); canvasRef.current?.focus({ preventScroll: true }); }}>
+                {sharingChai ? "Sharing chai…" : "Share chai"} <kbd>E</kbd>
+              </button>}
+              {mission.step === "complete" && <button type="button" className="view-toggle" onClick={() => setMissionProgress(null)}>Close mission</button>}
+            </section>}
           </section>
         ) : (
         <section className="panel">
@@ -839,6 +964,26 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
             </div>
           )}
           {interiorError && <p role="alert">Unable to open the building. Try again from Building view.</p>}
+          {walking && state === "ready" && <section className="mission-panel" aria-label="Campus missions">
+            <h2>{mission ? campusMissions[mission.id].title : "Campus missions"}</h2>
+            {mission && objective ? <>
+              <p role="status">{objective.text}</p>
+              <div className="mission-actions">
+                {objective.action && missionCanInteract && !showMap && <button type="button" className="view-toggle walk-toggle"
+                  onClick={() => { interactWithMission(); canvasRef.current?.focus({ preventScroll: true }); }}>
+                  {objective.action} <kbd>E</kbd>
+                </button>}
+                <button type="button" className="view-toggle" onClick={() => setMissionProgress(null)}>
+                  {mission.step === "complete" ? "Close mission" : "End mission"}
+                </button>
+              </div>
+            </> : (Object.keys(campusMissions) as CampusMissionId[]).map((id) => <div className="mission-choice" key={id}>
+              <button className="view-toggle" type="button" onClick={() => startMission(id)} disabled={Boolean(playerStatus.vehicle) || showMap}>
+                {campusMissions[id].title}
+              </button>
+              <p>{completedMissions.includes(id) ? "Completed · Play again" : campusMissions[id].summary}</p>
+            </div>)}
+          </section>}
           <p className="coverage-note">
             <strong>{campusBuildings.length} of {confirmedBuildings}</strong> confirmed structure IDs mapped
           </p>
@@ -853,8 +998,8 @@ function CampusExperience({ mode, onHome }: { mode: HomeMode; onHome: () => void
             className={showMap ? "canvas-hidden" : undefined}
             tabIndex={showMap ? -1 : 0}
           />
-          {showMap && <EntranceMap playerPoint={mapPlayerPoint} />}
-          {showMinimap && <EntranceMap markerRef={mapMarkerRef} />}
+          {showMap && <EntranceMap playerPoint={mapPlayerPoint} missionTarget={objective?.target} missionRoute={missionRoute} />}
+          {showMinimap && <EntranceMap markerRef={mapMarkerRef} missionTarget={objective?.target} missionRoute={missionRoute} />}
           <div className="viewer-label">
             {showMap ? "PLAN VIEW" : currentInterior ? `${currentInterior.entryName.toUpperCase()} INTERIOR` : walking && playerStatus.vehicle ? "VEHICLE CHASE" : cameraLabels[cameraView]}
           </div>

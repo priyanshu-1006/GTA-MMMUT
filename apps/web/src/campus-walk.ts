@@ -106,6 +106,10 @@ export function createCampusWalk(
   const listeners = new AbortController();
   const options = { signal: listeners.signal };
 
+  function syncEngineAudio() {
+    vehicles?.setEngineAudioPaused(!active || paused || document.visibilityState === "hidden");
+  }
+
   function clearInput() {
     keys.clear();
     velocity.setAll(0);
@@ -148,10 +152,11 @@ export function createCampusWalk(
     const shoulder = !vehicle && mode === "shoulder" ? 0.51 * shoulderSide : 0;
     const eye = vehicle ? 1.12 : mode === "first" ? (crouching ? 1.16 : 1.61) : crouching ? 0.97 : 1.27;
     camera.target.set(x + Math.sin(camera.alpha) * shoulder, y + eye, z - Math.cos(camera.alpha) * shoulder);
-    const status: PlayerStatus = { camera: mode, vehicle: vehicle?.label ?? null, vehicleKind: vehicle?.kind ?? null, nearby: nearby?.label ?? null,
+    const status: PlayerStatus = { camera: mode, vehicle: vehicle?.label ?? null, vehicleId: vehicle?.id ?? null,
+      vehicleKind: vehicle?.kind ?? null, nearby: nearby?.label ?? null,
       portalNearby: vehicle ? null : walkOptions.portal?.at([x, z], y) ?? null,
       speed: vehicle ? Math.round(Math.abs(vehicle.speed) * 3.6) : 0 };
-    const key = `${status.camera}/${status.vehicle}/${status.vehicleKind}/${status.nearby}/${status.portalNearby}/${status.speed}`;
+    const key = `${status.camera}/${status.vehicleId}/${status.nearby}/${status.portalNearby}/${status.speed}`;
     if (key !== previousStatus) {
       previousStatus = key;
       onStatus(status);
@@ -233,6 +238,7 @@ export function createCampusWalk(
   canvas.addEventListener("blur", clearInput, options);
   window.addEventListener("blur", clearInput, options);
   document.addEventListener("pointerlockchange", clearInput, options);
+  document.addEventListener("visibilitychange", syncEngineAudio, options);
   canvas.addEventListener("dblclick", () => {
     if (active && !paused) void canvas.requestPointerLock?.()?.catch(() => undefined);
   }, options);
@@ -434,6 +440,7 @@ export function createCampusWalk(
     setActive(enabled: boolean) {
       if (active === enabled) return;
       active = enabled;
+      syncEngineAudio();
       player.setEnabled(enabled);
       if (enabled) {
         started = true;
@@ -450,6 +457,7 @@ export function createCampusWalk(
     },
     setPaused(value: boolean) {
       paused = value;
+      syncEngineAudio();
       if (value) stopInput();
     },
     worldPosition() {

@@ -44,7 +44,11 @@ import { createCampusGardens } from './campus-gardens';
 import { createCampusRoadAsphalt, createCampusRoadFinishing } from './campus-road-finishing';
 import { createCampusSky } from './campus-sky';
 import { createCampusWalk } from './campus-walk';
+import '@babylonjs/core/Materials/standardMaterial';
 import { createCampusVehicles } from './campus-vehicles';
+import { createCampusMissionWorld, type CampusMissionActorPose } from './campus-mission-world';
+import { campusMissionLocations } from './campus-mission-locations';
+import { chaiMissionVehicle, missionObjectives, type CampusMissionId, type CampusMissionProgress, type CampusMissionSnapshot } from './campus-missions';
 import { createCampusPedestrians } from './campus-pedestrians';
 import { createCampusTraffic, type TrafficObstacle } from './campus-traffic';
 import { createCampusChant } from './campus-chant';
@@ -531,15 +535,19 @@ export function createEntranceScene(
   createCampusBuildings(scene, shadows);
   const academicDoors = createAcademicFacades(scene, shadows);
   createEngineeringFacades(scene, shadows);
-  createCampusLandmarks(scene, shadows);
+  const { cafeteriaDoorway, cafeteriaStepHeight } = createCampusLandmarks(scene, shadows);
   createReferencedAcademicFacades(scene, shadows);
   createB70Facade(scene, shadows);
   createB71Facade(scene, shadows);
   createB72Facade(scene, shadows);
   createCoveredWalkways(scene, shadows);
   const vehicles = createCampusVehicles(scene, shadows, worldPoints);
+  const missionWorld = createCampusMissionWorld(scene);
+  let missionProgress: CampusMissionProgress | null = null;
+  let friend: CampusMissionActorPose | null = null;
   const doors = createBuildingDoors(scene, [
     ...academicDoors,
+    cafeteriaDoorway,
     { id: 'nalanda', point: nalandaCampusEntrance, outward: [-1, 0], baseY: nalandaCampusDeckY,
       width: 3.1, height: 2.65, finish: '#4b6668' },
     { id: 'pushpagiri', point: academicFrontages.pushpagiri.door, outward: [0, academicFrontages.pushpagiri.outward],
@@ -552,6 +560,8 @@ export function createEntranceScene(
   const walk = createCampusWalk(scene, canvas, gate, worldPoints, (x, z) => {
     const gallery = nalandaCampusFloor(x, z);
     if (gallery !== undefined) return gallery;
+    const cafeteria = cafeteriaStepHeight(x, z);
+    if (cafeteria !== undefined) return cafeteria;
     if (sidewalks.some((outline) => containsPoint(outline, [x, z]))) return entranceSidewalkHeight;
   }, vehicles, onPlayerStatus, {
     portal: {
@@ -570,8 +580,9 @@ export function createEntranceScene(
   const traffic = createCampusTraffic(scene);
   const people = createCampusPedestrians(scene, shadows, () => {
     const obstacles = vehicleAndPlayerObstacles();
-    const car = traffic.obstacle();
-    if (car) obstacles.push({ position: car.position, radius: 2.45 });
+    for (const actor of traffic.obstacles()) {
+      obstacles.push({ position: actor.position, radius: 'radius' in actor ? actor.radius : Math.max(actor.halfLength, actor.halfWidth) });
+    }
     return obstacles;
   });
   const chant = createCampusChant(people.chantCenters);
@@ -586,9 +597,25 @@ export function createEntranceScene(
   scene.onBeforeRenderObservable.add(() => {
     if (paused) return;
     const player = walk.worldPosition();
+    const dt = Math.min(engine.getDeltaTime() / 1000, 0.1);
+    if (friend && player) {
+      const passenger = vehicles.missionPassengerPose();
+      if (passenger) friend = passenger;
+      else {
+        const [x, , z] = friend.position;
+        const dx = player.x - x;
+        const dz = player.z - z;
+        const gap = Math.hypot(dx, dz);
+        const advance = gap > 1.7 ? Math.min(gap - 1.5, dt * 3.9) / gap : 0;
+        const walkingFriend = advance > 0;
+        friend = { position: [x + dx * advance, 0.035, z + dz * advance], yaw: gap > 0.3 ? Math.atan2(dx, dz) : friend.yaw,
+          action: walkingFriend ? 'walk' : 'idle' };
+      }
+      missionWorld.setFriendPose(friend);
+    }
     const blockers: TrafficObstacle[] = [...people.blockers(), ...vehicles.states()];
     if (player && !vehicles.active()) blockers.push({ position: [player.x, player.z], radius: 0.55 });
-    traffic.update(Math.min(engine.getDeltaTime() / 1000, 0.1), blockers);
+    traffic.update(dt, blockers);
     chant.update(player ? [player.x, player.z] : null);
   });
   scene.onPointerObservable.add(({ type, pickInfo }) => {
@@ -608,6 +635,31 @@ export function createEntranceScene(
   scene.onDisposeObservable.addOnce(chant.dispose);
   return {
     scene,
+    prepareMission(id: CampusMissionId) {
+      if (vehicles.active()) return false;
+      return id === 'delivery'
+        ? vehicles.placeParkedVehicle('hatchback', campusMissionLocations.tnpCar.point, 0)
+        : vehicles.placeParkedVehicle(chaiMissionVehicle, campusMissionLocations.gardenBike.point, Math.PI);
+    },
+    setMissionProgress(progress: CampusMissionProgress | null) {
+      const next = progress?.step;
+      const previous = missionProgress?.step;
+      missionProgress = progress;
+      missionWorld.setTarget(next ? missionObjectives[next].target ?? null : null);
+      vehicles.setMissionPassenger(next === 'mountBike' || next === 'parkBike' ? chaiMissionVehicle : null);
+      if (next === 'mountBike' || (next === 'enterCafe' && previous === 'shareChai')) {
+        const [x, z] = campusMissionLocations[next === 'mountBike' ? 'gardenFriend' : 'cafeteriaParking'].point;
+        friend = { position: [x, 0.035, z], yaw: Math.PI, action: 'idle' };
+      } else if (next !== 'parkBike' && next !== 'enterCafe') friend = null;
+      missionWorld.setFriendPose(friend);
+    },
+    missionSnapshot(id: CampusMissionId): CampusMissionSnapshot | null {
+      const player = walk.worldPosition();
+      if (!player || paused || view !== 'walk') return null;
+      const driving = vehicles.active();
+      return { player: driving?.position ?? [player.x, player.z], driving: driving?.id ?? null,
+        vehicle: vehicles.states().find(({ id: vehicleId }) => vehicleId === (id === 'delivery' ? 'hatchback' : chaiMissionVehicle)) };
+    },
     playBuildingEntry(id: InteriorId) {
       const door = doors.get(id);
       if (!door || vehicles.active()) return Promise.resolve(false);
@@ -634,7 +686,11 @@ export function createEntranceScene(
         scene.activeCamera = preview.camera;
         preview.camera.attachControl(false);
         preview.applyView(view);
-        if (view === 'tnp-parking') vehicles.prefetchNearby(...annotationToWorld(campusGardens.placementParking.center), 'car');
+        if (view === 'tnp-parking') {
+          const center = annotationToWorld(campusGardens.placementParking.center);
+          vehicles.prefetchNearby(...center, 'car');
+          vehicles.prefetchNearby(...center, 'bullet');
+        }
       }
     },
     setWalkPaused,
@@ -650,6 +706,7 @@ export function createEntranceScene(
       setSkyReducedMotion(reducedMotion);
       people.setReducedMotion(reducedMotion);
       chant.setEnabled(campusSounds);
+      vehicles.setEngineAudioEnabled(campusSounds);
       if (view === 'walk') chant.start();
       walk.camera.fov = fieldOfView * Math.PI / 180;
       for (const camera of [preview.camera, walk.camera]) {
